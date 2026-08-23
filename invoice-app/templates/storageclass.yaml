@@ -1,0 +1,14 @@
+{{- if .Values.postgres.createStorageClass }}
+# EKS ships only a legacy gp2 class, so the gp3 CSI class is created here.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.postgres.storageClassName }}
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "true"
+{{- end }}

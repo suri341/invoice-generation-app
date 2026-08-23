@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: invoice-backend
+  namespace: {{ .Values.namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: invoice-backend
+  ports:
+    - name: http
+      port: {{ .Values.service.backendPort }}
+      targetPort: {{ .Values.service.backendPort }}

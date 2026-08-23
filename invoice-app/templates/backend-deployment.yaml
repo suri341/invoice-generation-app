@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoice-backend
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app: invoice-backend
+  template:
+    metadata:
+      labels:
+        app: invoice-backend
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15-alpine
+          command:
+            - /bin/sh
+            - -c
+            - until pg_isready -h invoice-postgres -p {{ .Values.service.postgresPort }} -U {{ .Values.postgres.user }}; do echo waiting for postgres; sleep 2; done
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: invoice-secrets
+                  key: postgres-password
+      containers:
+        - name: invoice-backend
+          image: docker.io/{{ .Values.image.username }}/invoice-backend:{{ .Values.image.backendTag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.backendPort }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: invoice-secrets
+                  key: database-url
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: invoice-secrets
+                  key: secret-key
+            - name: CORS_ORIGINS
+              value: {{ .Values.backend.corsOrigins | quote }}
+            - name: DEBUG
+              value: {{ .Values.backend.debug | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.service.backendPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.service.backendPort }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}

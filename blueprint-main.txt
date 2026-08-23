@@ -1,0 +1,1546 @@
+JAGANNATH INVOICE APP - MANUAL DEPLOYMENT GUIDE
+===============================================
+
+Last updated: 2026-08-23
+
+This is the manual, step-by-step reference. Every command is written
+out so it can be run and understood one at a time.
+
+For the automated path, use invoice.sh instead.
+
+
+CONTENTS
+--------
+1.  Architecture
+2.  Required tools
+3.  Local run without Docker
+4.  Local Docker run
+5.  Create EKS infrastructure
+6.  ACM certificate and DNS validation
+7.  AWS Load Balancer Controller
+8.  Build and push images
+9.  Deploy the application
+10. Point the domain at the ALB
+11. Verify
+12. ArgoCD (optional)
+13. Destroy
+14. Resource sizing
+15. Troubleshooting
+
+
+====================================================================
+1. ARCHITECTURE
+====================================================================
+
+Components:
+- Frontend: React built into an Nginx image
+- Backend: FastAPI
+- Database: PostgreSQL StatefulSet on an encrypted gp3 EBS volume
+- Ingress: internet-facing AWS Application Load Balancer with HTTPS
+
+Traffic flow:
+
+    Browser
+      -> https://invoice.vihan.store
+      -> ALB (HTTPS, ACM certificate)
+      -> /api, /docs, /health  -> invoice-backend:8000
+      -> /                     -> invoice-frontend:80
+      -> backend -> invoice-postgres:5432
+
+ArgoCD (Optional):
+    Browser
+      -> https://argocd.vihan.store
+      -> ArgoCD ALB (HTTPS, ACM certificate)
+      -> argocd-server:443 (HTTPS backend)
+
+Network layout:
+    VPC: 10.0.0.0/16
+    - Public subnets:  10.0.1.0/24, 10.0.2.0/24 (ALBs here)
+    - Private subnets: 10.0.3.0/24, 10.0.4.0/24 (EKS nodes here)
+    - NAT Gateway in each AZ for outbound traffic
+
+Namespaces:
+    - invoice-app: Application and database
+    - argocd: ArgoCD components
+    - kube-system: AWS Load Balancer Controller
+
+AWS Resources:
+    - EKS cluster: vihan-cluster (ap-south-1)
+    - ACM certificate: *.vihan.store (covers invoice.vihan.store and argocd.vihan.store)
+    - ALB: Created by ingress resources
+    - IAM roles: EKS cluster role, node role, IRSA for LBC
+    - EBS volumes: gp3 encrypted for PostgreSQL
+
+
+====================================================================
+2. REQUIRED TOOLS
+====================================================================
+
+Install these tools before starting:
+
+AWS CLI:
+    brew install awscli                # macOS
+    # OR
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+
+    # Configure credentials
+    aws configure
+    # OR
+    aws sso login
+
+Terraform:
+    brew install terraform             # macOS
+    # OR
+    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+    unzip terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
+
+kubectl:
+    brew install kubectl               # macOS
+    # OR
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+Helm:
+    brew install helm                  # macOS
+    # OR
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+eksctl:
+    brew install eksctl                # macOS
+    # OR
+    curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+    sudo mv /tmp/eksctl /usr/local/bin
+
+Docker:
+    # macOS: Download Docker Desktop from docker.com
+    # Linux:
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+
+Verify installations:
+    aws --version           # Should show 2.x
+    terraform --version     # Should show 1.5+
+    kubectl version --client
+    helm version
+    eksctl version
+    docker --version
+
+
+====================================================================
+3. LOCAL RUN WITHOUT DOCKER
+====================================================================
+
+For development and testing on your local machine:
+
+Prerequisites:
+    - PostgreSQL 15 installed locally
+    - Node.js 18+ and npm
+    - Python 3.11+
+
+Step 1: Start PostgreSQL
+    # macOS
+    brew services start postgresql@15
+
+    # Linux
+    sudo systemctl start postgresql
+
+Step 2: Create database
+    psql postgres -c "CREATE DATABASE invoice_db;"
+    psql postgres -c "CREATE USER postgres WITH PASSWORD 'postgres';"
+    psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE invoice_db TO postgres;"
+
+Step 3: Backend setup
+    cd backend
+    python3 -m venv venv
+    source venv/bin/activate
+
+    pip install -r requirements.txt
+
+    # Create .env file
+    cat > .env << EOF
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/invoice_db
+SECRET_KEY=your-secret-key-here
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+DEBUG=True
+EOF
+
+    # Initialize database
+    python3 -c "from app.database import init_db; init_db()"
+
+    # Load sample data
+    python3 -m app.seed_data
+
+    # Start backend
+    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+    # Backend will be available at http://localhost:8000
+    # API docs: http://localhost:8000/docs
+
+Step 4: Frontend setup (in new terminal)
+    cd frontend
+    npm install
+
+    # Create .env file
+    cat > .env << EOF
+VITE_API_URL=http://localhost:8000
+EOF
+
+    # Start frontend
+    npm run dev
+
+    # Frontend will be available at http://localhost:5173
+
+Step 5: Test the application
+    Open browser: http://localhost:5173
+    - Navigate through customers, parts, invoices
+    - Create a test invoice
+    - Download PDF
+
+
+====================================================================
+4. LOCAL DOCKER RUN
+====================================================================
+
+Run the application using Docker containers:
+
+Step 1: Start PostgreSQL container
+    docker run -d \
+      --name invoice-postgres \
+      -e POSTGRES_USER=postgres \
+      -e POSTGRES_PASSWORD=postgres \
+      -e POSTGRES_DB=invoice_db \
+      -p 5432:5432 \
+      -v invoice_db_data:/var/lib/postgresql/data \
+      postgres:15-alpine
+
+Step 2: Build and run backend
+    cd backend
+
+    docker build -t invoice-backend .
+
+    docker run -d \
+      --name invoice-backend \
+      -p 8000:8000 \
+      -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/invoice_db" \
+      -e SECRET_KEY="change-this-in-production" \
+      -e CORS_ORIGINS="http://localhost:3000,http://localhost:80" \
+      -e DEBUG="False" \
+      invoice-backend
+
+    # Wait for backend to be healthy
+    sleep 10
+    curl http://localhost:8000/health
+
+Step 3: Build and run frontend
+    cd ../frontend
+
+    docker build -t invoice-frontend .
+
+    docker run -d \
+      --name invoice-frontend \
+      -p 80:80 \
+      invoice-frontend
+
+    # Frontend will be available at http://localhost
+
+Step 4: Access the application
+    Open browser: http://localhost
+    API docs: http://localhost:8000/docs
+
+Step 5: View logs
+    docker logs invoice-backend
+    docker logs invoice-frontend
+    docker logs invoice-postgres
+
+Step 6: Stop and cleanup
+    docker stop invoice-backend invoice-frontend invoice-postgres
+    docker rm invoice-backend invoice-frontend invoice-postgres
+    docker volume rm invoice_db_data
+
+
+====================================================================
+5. CREATE EKS INFRASTRUCTURE
+====================================================================
+
+Deploy the EKS cluster using Terraform:
+
+Step 1: Navigate to Terraform directory
+    cd eks/terraform
+
+Step 2: Configure variables
+    Edit terraform.tfvars:
+
+    region                 = "ap-south-1"
+    cluster_name           = "vihan-cluster"
+    project_name           = "invoice-app"
+    environment            = "production"
+    create_acm_certificate = true
+    acm_domain_name        = "vihan.store"
+
+Step 3: Initialize Terraform
+    terraform init
+
+    # This downloads AWS provider and initializes backend
+
+Step 4: Review the plan
+    terraform plan
+
+    # Review resources that will be created:
+    # - VPC with public/private subnets
+    # - EKS cluster
+    # - Node group (2 t3.medium nodes)
+    # - IAM roles and policies
+    # - Security groups
+    # - ACM certificate (if enabled)
+
+Step 5: Apply infrastructure
+    terraform apply
+
+    # Type 'yes' when prompted
+    # This takes ~15-20 minutes
+
+    # Resources created:
+    # - VPC: 10.0.0.0/16
+    # - 2 Public subnets (10.0.1.0/24, 10.0.2.0/24)
+    # - 2 Private subnets (10.0.3.0/24, 10.0.4.0/24)
+    # - NAT Gateways
+    # - Internet Gateway
+    # - EKS Cluster: vihan-cluster
+    # - Node Group: 2 nodes, t3.medium
+    # - ACM Certificate: *.vihan.store (PENDING_VALIDATION)
+
+Step 6: Configure kubectl
+    aws eks update-kubeconfig \
+      --region ap-south-1 \
+      --name vihan-cluster
+
+    # Verify connection
+    kubectl get nodes
+
+    # Should show 2 nodes in Ready state
+
+Step 7: Verify cluster
+    kubectl cluster-info
+    kubectl get nodes -o wide
+    kubectl get namespaces
+
+
+====================================================================
+6. ACM CERTIFICATE AND DNS VALIDATION
+====================================================================
+
+The ACM certificate uses a wildcard pattern that covers ALL subdomains:
+- *.vihan.store (covers invoice.vihan.store, argocd.vihan.store, and any future subdomains)
+- vihan.store (base domain also included)
+
+Step 1: Get certificate ARN
+    cd eks/terraform
+    terraform output acm_certificate_arn
+
+    # Example output:
+    # arn:aws:acm:ap-south-1:123456789012:certificate/abc123...
+
+Step 2: Get validation records
+    terraform output acm_validation_record_name
+    terraform output acm_validation_record_value
+
+    # Example outputs:
+    # _a1b2c3d4.vihan.store.
+    # _x1y2z3.acm-validations.aws.
+
+Step 3: Add CNAME record in GoDaddy DNS
+
+    Login to GoDaddy DNS management for vihan.store
+
+    Add CNAME record:
+    -----------------------------------------
+    Type:  CNAME
+    Name:  _a1b2c3d4
+    Value: _x1y2z3.acm-validations.aws.
+    TTL:   600 (10 minutes)
+    -----------------------------------------
+
+    Important: Use only the subdomain part for Name, not the full FQDN
+    Example: If validation name is "_a1b2c3d4.vihan.store."
+             Enter just: "_a1b2c3d4"
+
+Step 4: Wait for DNS propagation
+    # Check if DNS record exists (takes 1-5 minutes)
+    dig _a1b2c3d4.vihan.store CNAME +short
+
+    # Should return the validation value
+
+Step 5: Wait for certificate validation
+    aws acm describe-certificate \
+      --certificate-arn $(terraform output -raw acm_certificate_arn) \
+      --region ap-south-1 \
+      --query 'Certificate.Status'
+
+    # Poll until it shows "ISSUED" (takes 5-30 minutes after DNS propagation)
+
+    # Or use the wait command:
+    aws acm wait certificate-validated \
+      --certificate-arn $(terraform output -raw acm_certificate_arn) \
+      --region ap-south-1
+
+Step 6: Verify certificate is a wildcard covering all subdomains
+    aws acm describe-certificate \
+      --certificate-arn $(terraform output -raw acm_certificate_arn) \
+      --region ap-south-1 \
+      --query 'Certificate.{Domain:DomainName,SANs:SubjectAlternativeNames}'
+
+    # Should show:
+    # Domain: *.vihan.store (wildcard - covers all subdomains)
+    # SANs: [*.vihan.store, vihan.store]
+
+    # Or check the helpful output:
+    terraform output acm_certificate_domains
+
+
+====================================================================
+7. AWS LOAD BALANCER CONTROLLER
+====================================================================
+
+Install the AWS Load Balancer Controller to manage ALBs:
+
+Step 1: Get AWS account ID
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    echo $ACCOUNT_ID
+
+Step 2: Create IAM policy
+    curl -o /tmp/iam_policy.json \
+      https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.0/docs/install/iam_policy.json
+
+    aws iam create-policy \
+      --policy-name AWSLoadBalancerControllerIAMPolicy \
+      --policy-document file:///tmp/iam_policy.json \
+      --region ap-south-1
+
+    # Note the policy ARN (or construct it):
+    # arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy
+
+Step 3: Create IAM service account (IRSA)
+    eksctl create iamserviceaccount \
+      --cluster=vihan-cluster \
+      --region=ap-south-1 \
+      --namespace=kube-system \
+      --name=aws-load-balancer-controller \
+      --attach-policy-arn=arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy \
+      --override-existing-serviceaccounts \
+      --approve
+
+    # This creates:
+    # - ServiceAccount in kube-system namespace
+    # - IAM role with trust policy for OIDC
+    # - Annotation linking them
+
+    # Verify service account
+    kubectl -n kube-system get serviceaccount aws-load-balancer-controller
+    kubectl -n kube-system describe serviceaccount aws-load-balancer-controller
+
+    # Should see annotation: eks.amazonaws.com/role-arn
+
+Step 4: Get VPC ID
+    cd eks/terraform
+    VPC_ID=$(terraform output -raw vpc_id)
+    echo $VPC_ID
+
+Step 5: Add Helm repo
+    helm repo add eks https://aws.github.io/eks-charts
+    helm repo update eks
+
+Step 6: Install Load Balancer Controller
+    helm upgrade --install aws-load-balancer-controller \
+      eks/aws-load-balancer-controller \
+      --namespace kube-system \
+      --set clusterName=vihan-cluster \
+      --set region=ap-south-1 \
+      --set vpcId=${VPC_ID} \
+      --set serviceAccount.create=false \
+      --set serviceAccount.name=aws-load-balancer-controller \
+      --version 1.14.0 \
+      --wait --timeout 10m
+
+    # IMPORTANT: vpcId is mandatory!
+    # Without it, controller queries EC2 metadata and crashes
+
+Step 7: Verify installation
+    kubectl -n kube-system get deployment aws-load-balancer-controller
+    kubectl -n kube-system rollout status deployment/aws-load-balancer-controller
+
+    kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-load-balancer-controller
+
+    # Should see 2 replicas running
+
+    # Check logs
+    kubectl -n kube-system logs -l app.kubernetes.io/name=aws-load-balancer-controller --tail=50
+
+
+====================================================================
+8. BUILD AND PUSH IMAGES
+====================================================================
+
+Build multi-arch images and push to Docker Hub:
+
+Step 1: Login to Docker Hub
+    docker login
+    # Enter username: vihan341
+    # Enter password
+
+Step 2: Build backend image
+    cd backend
+
+    docker buildx build \
+      --platform linux/amd64 \
+      -t vihan341/invoice-backend:341 \
+      --push \
+      .
+
+    # Using amd64 because EKS nodes are t3.medium (Intel/AMD processors)
+    # Build takes ~5 minutes
+
+Step 3: Build frontend image
+    cd ../frontend
+
+    docker buildx build \
+      --platform linux/amd64 \
+      -t vihan341/invoice-frontend:341 \
+      --push \
+      .
+
+    # Build takes ~5 minutes
+
+Step 4: Verify images
+    docker pull vihan341/invoice-backend:341
+    docker pull vihan341/invoice-frontend:341
+
+    # Check image sizes
+    docker images | grep vihan341
+
+Step 5: Test images locally (optional)
+    docker run -d --name test-backend \
+      -p 8000:8000 \
+      -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/invoice_db" \
+      vihan341/invoice-backend:341
+
+    curl http://localhost:8000/health
+
+    docker stop test-backend && docker rm test-backend
+
+Notes:
+    - Image tag 341 is configured in invoice-app/values.yaml
+    - pullPolicy is set to "Always" to ensure latest images are used
+    - Images are public on Docker Hub (no authentication needed)
+
+
+====================================================================
+9. DEPLOY THE APPLICATION
+====================================================================
+
+Deploy using Helm:
+
+Step 1: Navigate to chart directory
+    cd invoice-app
+
+Step 2: Lint the Helm chart
+    helm lint .
+
+    # Should show: 1 chart(s) linted, 0 chart(s) failed
+
+Step 3: Get certificate ARN
+    cd ../eks/terraform
+    CERT_ARN=$(terraform output -raw acm_certificate_arn)
+    echo $CERT_ARN
+    cd ../../invoice-app
+
+Step 4: Review values.yaml
+    cat values.yaml
+
+    # Key configurations:
+    # - namespace: invoice-app
+    # - image tags: 341
+    # - ingress.host: invoice.vihan.store
+    # - postgres storage: 10Gi gp3
+    # - seed.enabled: true (loads sample data)
+
+Step 5: Deploy application
+    helm upgrade --install invoice-app . \
+      --namespace invoice-app \
+      --create-namespace \
+      --set ingress.certificateArn="${CERT_ARN}" \
+      --set image.backendTag="341" \
+      --set image.frontendTag="341" \
+      --wait --timeout 15m
+
+    # This creates:
+    # - Namespace: invoice-app
+    # - PostgreSQL StatefulSet with PVC
+    # - Backend Deployment (1 replica)
+    # - Frontend Deployment (1 replica)
+    # - Services for all components
+    # - Ingress (triggers ALB creation)
+    # - Seed job (runs once)
+
+Step 6: Monitor deployment
+    kubectl -n invoice-app get pods -w
+
+    # Wait for all pods to be Running:
+    # - invoice-postgres-0
+    # - invoice-backend-xxx
+    # - invoice-frontend-xxx
+    # - seed-job-xxx (will complete and show Completed)
+
+Step 7: Check resources
+    kubectl -n invoice-app get all
+    kubectl -n invoice-app get pvc
+    kubectl -n invoice-app get ingress
+
+Step 8: Verify database initialization
+    kubectl -n invoice-app logs -l app=seed-job
+
+    # Should show: Database seeded successfully
+
+Step 9: Check backend logs
+    kubectl -n invoice-app logs -l app=backend
+
+    # Should show FastAPI startup logs
+
+Step 10: Describe ingress
+    kubectl -n invoice-app describe ingress invoice-app
+
+    # Look for events showing ALB creation
+
+
+====================================================================
+10. POINT THE DOMAIN AT THE ALB
+====================================================================
+
+Configure DNS to point invoice.vihan.store to the ALB:
+
+Step 1: Wait for ALB hostname
+    kubectl -n invoice-app get ingress invoice-app -w
+
+    # Wait for ADDRESS column to show ALB hostname
+    # Takes 2-5 minutes
+
+Step 2: Get ALB hostname
+    ALB_HOSTNAME=$(kubectl -n invoice-app get ingress invoice-app \
+      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+    echo $ALB_HOSTNAME
+
+    # Example:
+    # k8s-invoicea-invoicea-a1b2c3d4-1234567890.ap-south-1.elb.amazonaws.com
+
+Step 3: Test ALB directly
+    curl -I http://${ALB_HOSTNAME}/
+
+    # Should return HTTP 301 (redirecting to HTTPS)
+
+    curl -k -I https://${ALB_HOSTNAME}/
+
+    # Should return HTTP 200
+
+Step 4: Add CNAME record in GoDaddy
+
+    Login to GoDaddy DNS management for vihan.store
+
+    Add CNAME record:
+    -----------------------------------------
+    Type:  CNAME
+    Name:  invoice
+    Value: k8s-invoicea-invoicea-a1b2c3d4-1234567890.ap-south-1.elb.amazonaws.com
+    TTL:   600 (10 minutes)
+    -----------------------------------------
+
+    Note: Use just "invoice" for Name, not "invoice.vihan.store"
+
+Step 5: Wait for DNS propagation
+    # Check DNS resolution (takes 1-10 minutes)
+    dig invoice.vihan.store +short
+
+    # Should return ALB hostname
+
+    # Or use nslookup
+    nslookup invoice.vihan.store
+
+Step 6: Verify SSL certificate
+    openssl s_client -connect invoice.vihan.store:443 -servername invoice.vihan.store < /dev/null 2>/dev/null | openssl x509 -noout -text | grep -A2 "Subject Alternative Name"
+
+    # Should show: DNS:vihan.store, DNS:argocd.vihan.store
+
+
+====================================================================
+11. VERIFY
+====================================================================
+
+Test all endpoints and functionality:
+
+Step 1: Check application health
+    curl https://invoice.vihan.store/health
+
+    # Should return: {"status":"healthy","database":"connected"}
+
+Step 2: Test API endpoints
+    # Get customers
+    curl https://invoice.vihan.store/api/customers
+
+    # Get parts
+    curl https://invoice.vihan.store/api/parts
+
+    # Get invoices
+    curl https://invoice.vihan.store/api/invoices
+
+Step 3: Test API documentation
+    Open browser: https://invoice.vihan.store/docs
+
+    # Should show Swagger UI with all endpoints
+
+Step 4: Test frontend
+    Open browser: https://invoice.vihan.store
+
+    # Navigate through:
+    # - Dashboard
+    # - Customers page
+    # - Parts page
+    # - Invoices page
+    # - Create new invoice
+    # - Download invoice PDF
+
+Step 5: Verify database
+    kubectl -n invoice-app exec -it invoice-postgres-0 -- psql -U postgres -d invoice_db
+
+    # Inside psql:
+    \dt                          # List tables
+    SELECT COUNT(*) FROM customers;
+    SELECT COUNT(*) FROM parts;
+    SELECT COUNT(*) FROM invoices;
+    \q
+
+Step 6: Check resource usage
+    kubectl -n invoice-app top pods
+    kubectl -n invoice-app top nodes
+
+Step 7: Verify persistent storage
+    kubectl -n invoice-app get pvc
+
+    # Should show: postgres-data-invoice-postgres-0  Bound  10Gi
+
+Step 8: Test invoice PDF generation
+    # Create an invoice via UI
+    # Click "Download PDF"
+    # Verify PDF opens correctly with company logo and details
+
+Step 9: Check logs for errors
+    kubectl -n invoice-app logs -l app=backend --tail=100
+    kubectl -n invoice-app logs -l app=frontend --tail=100
+    kubectl -n invoice-app logs invoice-postgres-0 --tail=100
+
+Step 10: Performance test (optional)
+    # Test concurrent requests
+    ab -n 100 -c 10 https://invoice.vihan.store/health
+
+
+====================================================================
+12. ARGOCD (OPTIONAL)
+====================================================================
+
+Install ArgoCD for GitOps with domain argocd.vihan.store:
+
+Step 1: Add Argo Helm repository
+    helm repo add argo https://argoproj.github.io/argo-helm
+    helm repo update argo
+
+Step 2: Install ArgoCD
+    helm upgrade --install argocd argo/argo-cd \
+      --namespace argocd \
+      --create-namespace \
+      --version 7.7.11 \
+      --set dex.enabled=false \
+      --set notifications.enabled=false \
+      --set applicationSet.enabled=false \
+      --set server.resources.requests.cpu=50m \
+      --set server.resources.requests.memory=128Mi \
+      --set server.resources.limits.memory=256Mi \
+      --set repoServer.resources.requests.cpu=50m \
+      --set repoServer.resources.requests.memory=128Mi \
+      --set repoServer.resources.limits.memory=256Mi \
+      --set controller.resources.requests.cpu=100m \
+      --set controller.resources.requests.memory=256Mi \
+      --set controller.resources.limits.memory=512Mi \
+      --set redis.resources.requests.cpu=50m \
+      --set redis.resources.requests.memory=64Mi \
+      --set redis.resources.limits.memory=128Mi \
+      --wait --timeout 10m
+
+    # Note: dex, notifications, applicationSet disabled to save resources
+
+Step 3: Get ArgoCD admin password
+    kubectl -n argocd get secret argocd-initial-admin-secret \
+      -o jsonpath='{.data.password}' | base64 -d
+
+    echo ""  # newline
+
+    # Save this password! Username is: admin
+
+Step 4: Create ArgoCD Ingress for argocd.vihan.store
+    # Get certificate ARN
+    cd eks/terraform
+    CERT_ARN=$(terraform output -raw acm_certificate_arn)
+    cd ../../argocd
+
+    # Apply ingress with certificate ARN
+    cat argocd-ingress.yaml | \
+      sed "s|# alb.ingress.kubernetes.io/certificate-arn:|alb.ingress.kubernetes.io/certificate-arn:|" | \
+      sed "s|ACM_CERT_ARN_PLACEHOLDER|${CERT_ARN}|" | \
+      kubectl apply -f -
+
+Step 5: Wait for ArgoCD ALB
+    kubectl -n argocd get ingress argocd-server -w
+
+    # Wait for ADDRESS to populate (2-5 minutes)
+
+Step 6: Get ArgoCD ALB hostname
+    ARGOCD_ALB=$(kubectl -n argocd get ingress argocd-server \
+      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+    echo $ARGOCD_ALB
+
+    # Example:
+    # k8s-argocd-argocds-a1b2c3d4-1234567890.ap-south-1.elb.amazonaws.com
+
+Step 7: Add CNAME record for ArgoCD in GoDaddy
+
+    Login to GoDaddy DNS management for vihan.store
+
+    Add CNAME record:
+    -----------------------------------------
+    Type:  CNAME
+    Name:  argocd
+    Value: k8s-argocd-argocds-a1b2c3d4-1234567890.ap-south-1.elb.amazonaws.com
+    TTL:   600 (10 minutes)
+    -----------------------------------------
+
+Step 8: Wait for DNS propagation
+    dig argocd.vihan.store +short
+
+    # Should return ArgoCD ALB hostname
+
+Step 9: Access ArgoCD UI
+    Option A: Via domain (after DNS propagates)
+    Open browser: https://argocd.vihan.store
+    Username: admin
+    Password: (from step 3)
+
+    Option B: Via port-forward (immediate access)
+    kubectl -n argocd port-forward svc/argocd-server 8080:443
+
+    Open browser: https://localhost:8080
+    Username: admin
+    Password: (from step 3)
+
+Step 10: Register the application
+    # Make sure your repo is pushed to GitHub
+    cd ~/Documents/jagannath-invoice-generation-app-main
+    git remote get-url origin
+
+    # Apply ArgoCD Application manifest
+    cd argocd
+    REPO_URL=$(git -C .. remote get-url origin)
+    CERT_ARN=$(terraform -chdir=../eks/terraform output -raw acm_certificate_arn)
+
+    cat application.yaml | \
+      sed "s|REPO_URL_PLACEHOLDER|${REPO_URL}|" | \
+      sed "s|ACM_CERT_ARN_PLACEHOLDER|${CERT_ARN}|" | \
+      kubectl apply -f -
+
+Step 11: Verify ArgoCD Application
+    # Via CLI
+    kubectl -n argocd get application invoice-app
+
+    # Via UI
+    # Navigate to Applications in ArgoCD UI
+    # Should see "invoice-app" with auto-sync enabled
+
+Step 12: Test GitOps workflow
+    # Make a change to invoice-app/values.yaml
+    # Example: change backend.replicaCount to 2
+    git add invoice-app/values.yaml
+    git commit -m "Scale backend to 2 replicas"
+    git push
+
+    # Watch ArgoCD sync the change (takes 1-3 minutes)
+    kubectl -n argocd get application invoice-app -w
+
+    # Verify in cluster
+    kubectl -n invoice-app get pods
+
+    # Should see 2 backend pods
+
+Step 13: ArgoCD CLI (optional)
+    # Install ArgoCD CLI
+    brew install argocd  # macOS
+
+    # Login
+    argocd login argocd.vihan.store --username admin
+
+    # List applications
+    argocd app list
+
+    # Sync application manually
+    argocd app sync invoice-app
+
+    # View application details
+    argocd app get invoice-app
+
+
+====================================================================
+13. DESTROY
+====================================================================
+
+Remove everything in the correct order to avoid dependency issues:
+
+WARNING: This deletes the cluster, application, and ALL DATA permanently.
+
+Step 1: Configure kubectl
+    aws eks update-kubeconfig --region ap-south-1 --name vihan-cluster
+
+Step 2: Remove ArgoCD Application (if installed)
+    kubectl -n argocd delete application invoice-app --ignore-not-found --timeout=120s
+
+    # This prevents ArgoCD from recreating resources we're about to delete
+
+Step 3: Remove ArgoCD Ingress (if installed)
+    kubectl -n argocd delete ingress argocd-server --ignore-not-found --timeout=300s
+
+    # Wait for ALB to be deleted by AWS Load Balancer Controller
+
+Step 4: Remove application Ingress
+    kubectl -n invoice-app delete ingress invoice-app --ignore-not-found --timeout=300s
+
+    # This triggers ALB deletion
+    # IMPORTANT: Must happen before uninstalling the controller!
+
+Step 5: Uninstall application
+    helm uninstall invoice-app -n invoice-app
+
+    # This removes all deployments, services, StatefulSets
+
+Step 6: Delete namespace
+    kubectl delete namespace invoice-app --ignore-not-found --timeout=300s
+
+    # This removes PVCs and the EBS volume
+
+Step 7: Get VPC ID (needed for cleanup)
+    cd eks/terraform
+    VPC_ID=$(terraform output -raw vpc_id)
+    echo $VPC_ID
+
+Step 8: Wait for load balancers to be fully deleted
+    # This is critical! Network interfaces must be released before VPC deletion
+
+    for i in {1..30}; do
+      COUNT=$(aws elbv2 describe-load-balancers \
+        --region ap-south-1 \
+        --query "length(LoadBalancers[?VpcId=='$VPC_ID'])" \
+        --output text 2>/dev/null || echo 0)
+
+      echo "Load balancers remaining: $COUNT"
+
+      if [ "$COUNT" = "0" ]; then
+        echo "All load balancers deleted"
+        break
+      fi
+
+      sleep 10
+    done
+
+Step 9: Remove AWS Load Balancer Controller
+    helm uninstall aws-load-balancer-controller -n kube-system
+
+Step 10: Delete Load Balancer Controller CRDs
+    kubectl delete crd \
+      ingressclassparams.elbv2.k8s.aws \
+      targetgroupbindings.elbv2.k8s.aws \
+      --ignore-not-found
+
+Step 11: Remove IRSA service account
+    eksctl delete iamserviceaccount \
+      --cluster=vihan-cluster \
+      --region=ap-south-1 \
+      --namespace=kube-system \
+      --name=aws-load-balancer-controller
+
+Step 12: Uninstall ArgoCD (if installed)
+    helm uninstall argocd -n argocd
+    kubectl delete namespace argocd --ignore-not-found --timeout=300s
+
+Step 13: Clean up leftover network interfaces
+    # These are created by AWS services but not tracked by Terraform
+    # They block VPC deletion if not removed
+
+    for ENI in $(aws ec2 describe-network-interfaces \
+      --region ap-south-1 \
+      --filters "Name=vpc-id,Values=$VPC_ID" "Name=status,Values=available" \
+      --query 'NetworkInterfaces[].NetworkInterfaceId' \
+      --output text); do
+
+      echo "Deleting ENI: $ENI"
+      aws ec2 delete-network-interface \
+        --region ap-south-1 \
+        --network-interface-id $ENI 2>/dev/null || true
+    done
+
+Step 14: Clean up VPC endpoints
+    for EP in $(aws ec2 describe-vpc-endpoints \
+      --region ap-south-1 \
+      --filters "Name=vpc-id,Values=$VPC_ID" \
+      --query 'VpcEndpoints[].VpcEndpointId' \
+      --output text); do
+
+      echo "Deleting VPC Endpoint: $EP"
+      aws ec2 delete-vpc-endpoints \
+        --region ap-south-1 \
+        --vpc-endpoint-ids $EP 2>/dev/null || true
+    done
+
+Step 15: Destroy Terraform infrastructure
+    terraform plan -destroy -out=destroy.tfplan
+    terraform apply destroy.tfplan
+
+    # If first attempt fails (AWS eventual consistency):
+    # Wait 60 seconds and retry
+
+Step 16: Delete IAM policy (optional)
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+    aws iam delete-policy \
+      --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy \
+      --region ap-south-1
+
+Step 17: Remove DNS records in GoDaddy
+    # Manually delete these CNAME records:
+    # - _acm-validation-string (ACM validation)
+    # - invoice
+    # - argocd
+
+Step 18: Clean up local kubeconfig
+    kubectl config delete-context arn:aws:eks:ap-south-1:${ACCOUNT_ID}:cluster/vihan-cluster
+
+Step 19: Verify cleanup
+    # Should show no resources
+    aws eks list-clusters --region ap-south-1
+    aws ec2 describe-vpcs --region ap-south-1 --filters "Name=tag:Name,Values=*vihan*"
+    aws elbv2 describe-load-balancers --region ap-south-1 --query "LoadBalancers[?VpcId=='$VPC_ID']"
+
+
+====================================================================
+14. RESOURCE SIZING
+====================================================================
+
+Current resource allocations:
+
+Backend (FastAPI):
+    requests:
+      cpu: 100m (0.1 CPU)
+      memory: 256Mi
+    limits:
+      cpu: 500m (0.5 CPU)
+      memory: 512Mi
+    replicas: 1
+
+Frontend (Nginx):
+    requests:
+      cpu: 50m (0.05 CPU)
+      memory: 64Mi
+    limits:
+      cpu: 200m (0.2 CPU)
+      memory: 128Mi
+    replicas: 1
+
+PostgreSQL:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    storage: 10Gi gp3 encrypted
+    replicas: 1 (StatefulSet)
+
+ArgoCD (if installed):
+    server:
+      requests: 50m CPU, 128Mi memory
+      limits: 256Mi memory
+    repo-server:
+      requests: 50m CPU, 128Mi memory
+      limits: 256Mi memory
+    controller:
+      requests: 100m CPU, 256Mi memory
+      limits: 512Mi memory
+    redis:
+      requests: 50m CPU, 64Mi memory
+      limits: 128Mi memory
+
+EKS Nodes:
+    instance_type: t3.medium
+    - 2 vCPUs
+    - 4 GiB memory
+    - Up to 5 Gbps network
+    desired_capacity: 2
+    min_size: 1
+    max_size: 3
+
+Total cluster capacity:
+    - 4 vCPUs (2 nodes × 2 vCPUs)
+    - 8 GiB memory (2 nodes × 4 GiB)
+
+Total allocated resources (without ArgoCD):
+    - CPU requests: ~250m (6% of cluster)
+    - Memory requests: ~576Mi (7% of cluster)
+    - Plenty of room for scaling
+
+AWS Load Balancer Controller:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+Scaling recommendations:
+
+For production traffic:
+    - Backend: Increase to 2-3 replicas
+    - Frontend: Increase to 2 replicas
+    - Add HorizontalPodAutoscaler for backend:
+        minReplicas: 2
+        maxReplicas: 5
+        targetCPUUtilizationPercentage: 70
+
+For high availability:
+    - PostgreSQL: Consider RDS instead of in-cluster
+    - Enable cluster autoscaler (already configured in Terraform)
+    - Add pod disruption budgets
+
+Cost estimate (ap-south-1):
+    - 2× t3.medium: ~$60/month
+    - 1× ALB: ~$22/month
+    - 2× NAT Gateway: ~$66/month
+    - EBS gp3 10GB: ~$1/month
+    - Data transfer: variable
+    Total: ~$150/month
+
+
+====================================================================
+15. TROUBLESHOOTING
+====================================================================
+
+Common issues and solutions:
+
+-------------------------------------------------------------------
+ISSUE: Nodes not Ready
+-------------------------------------------------------------------
+Symptoms:
+    kubectl get nodes
+    # Shows NotReady status
+
+Diagnosis:
+    kubectl describe node <node-name>
+    # Check events and conditions
+
+Solutions:
+    1. Check node logs:
+       aws ec2 describe-instances --instance-ids <instance-id>
+
+    2. SSH to node (if enabled):
+       aws ssm start-session --target <instance-id>
+
+    3. Check IAM roles:
+       aws iam get-role --role-name <node-role-name>
+
+    4. Restart node:
+       kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+       # Terminate instance in AWS Console (ASG will create new one)
+
+-------------------------------------------------------------------
+ISSUE: Certificate not validating
+-------------------------------------------------------------------
+Symptoms:
+    Certificate stuck in PENDING_VALIDATION
+
+Diagnosis:
+    aws acm describe-certificate --certificate-arn <arn> --region ap-south-1
+
+Solutions:
+    1. Verify DNS record exists:
+       dig <validation-name> CNAME +short
+
+    2. Check GoDaddy DNS:
+       - Ensure CNAME record is saved
+       - Check TTL (should be 600)
+       - Wait for propagation (5-30 minutes)
+
+    3. Try different DNS resolver:
+       dig @8.8.8.8 <validation-name> CNAME +short
+
+    4. Re-create certificate if needed:
+       terraform destroy -target aws_acm_certificate.app[0]
+       terraform apply
+
+-------------------------------------------------------------------
+ISSUE: ALB not created
+-------------------------------------------------------------------
+Symptoms:
+    Ingress has no ADDRESS after 10+ minutes
+
+Diagnosis:
+    kubectl -n invoice-app describe ingress invoice-app
+    # Check events
+
+    kubectl -n kube-system logs -l app.kubernetes.io/name=aws-load-balancer-controller --tail=100
+    # Check controller logs
+
+Solutions:
+    1. Verify controller is running:
+       kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-load-balancer-controller
+
+    2. Check IAM permissions:
+       kubectl -n kube-system describe sa aws-load-balancer-controller
+       # Should have eks.amazonaws.com/role-arn annotation
+
+    3. Verify VPC ID is set:
+       helm get values aws-load-balancer-controller -n kube-system
+       # Should show vpcId
+
+    4. Check subnet tags:
+       aws ec2 describe-subnets --filters "Name=vpc-id,Values=<vpc-id>"
+       # Public subnets need: kubernetes.io/role/elb=1
+       # Private subnets need: kubernetes.io/role/internal-elb=1
+
+    5. Re-install controller:
+       helm uninstall aws-load-balancer-controller -n kube-system
+       # Wait 1 minute
+       # Re-install (see section 7)
+
+-------------------------------------------------------------------
+ISSUE: Pods stuck in Pending
+-------------------------------------------------------------------
+Symptoms:
+    kubectl -n invoice-app get pods
+    # Shows Pending status
+
+Diagnosis:
+    kubectl -n invoice-app describe pod <pod-name>
+    # Check events section
+
+Common causes:
+    1. Insufficient resources:
+       kubectl describe nodes
+       # Check Allocated resources
+
+       Solution: Add more nodes or reduce requests
+
+    2. PVC not bound:
+       kubectl -n invoice-app get pvc
+       # Check status
+
+       Solution: Check StorageClass exists:
+       kubectl get storageclass
+       # Should show gp3
+
+    3. Image pull error:
+       Solution: Check image name and tag in values.yaml
+
+    4. Node affinity:
+       Solution: Remove node selectors if any
+
+-------------------------------------------------------------------
+ISSUE: Backend can't connect to database
+-------------------------------------------------------------------
+Symptoms:
+    Backend logs show connection refused or timeout
+
+Diagnosis:
+    kubectl -n invoice-app logs -l app=backend
+
+Solutions:
+    1. Check if PostgreSQL is running:
+       kubectl -n invoice-app get pods -l app=postgres
+
+    2. Check service exists:
+       kubectl -n invoice-app get svc invoice-postgres
+
+    3. Test connection from backend pod:
+       kubectl -n invoice-app exec -it <backend-pod> -- sh
+       nc -zv invoice-postgres 5432
+       # Should show: Connection successful
+
+    4. Check DATABASE_URL in secret:
+       kubectl -n invoice-app get secret invoice-secret -o jsonpath='{.data.DATABASE_URL}' | base64 -d
+       # Should be: postgresql://postgres:postgres@invoice-postgres:5432/invoice_db
+
+    5. Check PostgreSQL logs:
+       kubectl -n invoice-app logs invoice-postgres-0
+
+-------------------------------------------------------------------
+ISSUE: 503 Service Temporarily Unavailable
+-------------------------------------------------------------------
+Symptoms:
+    Browser shows 503 error or ALB health checks failing
+
+Diagnosis:
+    kubectl -n invoice-app get pods
+    # Check if pods are Running
+
+    kubectl -n invoice-app describe ingress invoice-app
+    # Check backend health
+
+Solutions:
+    1. Check target groups in AWS Console:
+       # ALB > Target Groups
+       # Verify targets are healthy
+
+    2. Verify service endpoints:
+       kubectl -n invoice-app get endpoints
+
+    3. Test backend health endpoint:
+       kubectl -n invoice-app port-forward svc/invoice-backend 8000:8000
+       curl http://localhost:8000/health
+
+    4. Check ingress annotations:
+       kubectl -n invoice-app get ingress invoice-app -o yaml
+       # Verify alb.ingress.kubernetes.io/healthcheck-path: /health
+
+-------------------------------------------------------------------
+ISSUE: SSL certificate mismatch
+-------------------------------------------------------------------
+Symptoms:
+    Browser shows SSL error or certificate warning
+
+Diagnosis:
+    openssl s_client -connect invoice.vihan.store:443 -servername invoice.vihan.store
+
+Solutions:
+    1. Verify certificate ARN in ingress:
+       kubectl -n invoice-app get ingress invoice-app -o yaml
+       # Check alb.ingress.kubernetes.io/certificate-arn
+
+    2. Check certificate status:
+       aws acm describe-certificate --certificate-arn <arn> --region ap-south-1
+
+    3. Verify domain matches:
+       # Certificate should cover: vihan.store, argocd.vihan.store
+       # Or use wildcard: *.vihan.store
+
+    4. Re-deploy with correct certificate:
+       helm upgrade invoice-app ./invoice-app \
+         -n invoice-app \
+         --set ingress.certificateArn="<correct-arn>" \
+         --reuse-values
+
+-------------------------------------------------------------------
+ISSUE: ArgoCD UI not accessible
+-------------------------------------------------------------------
+Symptoms:
+    argocd.vihan.store not loading or showing 502/503
+
+Diagnosis:
+    kubectl -n argocd get pods
+    kubectl -n argocd get ingress argocd-server
+
+Solutions:
+    1. Check if ArgoCD server is running:
+       kubectl -n argocd get pods -l app.kubernetes.io/name=argocd-server
+
+    2. Test via port-forward:
+       kubectl -n argocd port-forward svc/argocd-server 8080:443
+       # Visit: https://localhost:8080
+
+    3. Check ingress backend protocol:
+       kubectl -n argocd get ingress argocd-server -o yaml
+       # Should have: alb.ingress.kubernetes.io/backend-protocol: HTTPS
+
+    4. Verify certificate covers argocd domain:
+       aws acm describe-certificate --certificate-arn <arn> --region ap-south-1 \
+         --query 'Certificate.SubjectAlternativeNames'
+
+    5. Check DNS:
+       dig argocd.vihan.store +short
+
+-------------------------------------------------------------------
+ISSUE: High costs
+-------------------------------------------------------------------
+Diagnosis:
+    aws ce get-cost-and-usage \
+      --time-period Start=2026-08-01,End=2026-08-23 \
+      --granularity MONTHLY \
+      --metrics BlendedCost \
+      --group-by Type=SERVICE
+
+Solutions:
+    1. Reduce node count:
+       # Edit eks/terraform/node-group.tf
+       desired_size = 1
+       min_size = 1
+
+    2. Use smaller instance types:
+       instance_type = "t3.small"  # 2 vCPU, 2 GiB
+
+    3. Use Fargate for specific workloads
+
+    4. Delete unused resources:
+       # Unused ALBs
+       # Unused EBS volumes
+       # Unused Elastic IPs
+
+    5. Consider RDS Aurora Serverless for database
+
+    6. Use Spot instances for non-critical workloads
+
+-------------------------------------------------------------------
+ISSUE: Cluster autoscaler not working
+-------------------------------------------------------------------
+Symptoms:
+    Pods stuck in Pending but nodes not scaling up
+
+Diagnosis:
+    kubectl -n kube-system logs -l app.kubernetes.io/name=aws-cluster-autoscaler
+
+Solutions:
+    1. Verify autoscaler is installed:
+       kubectl -n kube-system get deployment cluster-autoscaler
+
+    2. Check IAM permissions:
+       # Node group IAM role needs autoscaling permissions
+
+    3. Verify ASG tags:
+       aws autoscaling describe-auto-scaling-groups \
+         --region ap-south-1 \
+         --query "AutoScalingGroups[?contains(Tags[?Key=='Name'].Value, 'vihan-cluster')]"
+
+       # Should have tags:
+       # k8s.io/cluster-autoscaler/enabled: true
+       # k8s.io/cluster-autoscaler/vihan-cluster: owned
+
+    4. Check node group max size:
+       # Must be > current size for scaling to work
+
+-------------------------------------------------------------------
+ISSUE: DNS not resolving
+-------------------------------------------------------------------
+Symptoms:
+    dig invoice.vihan.store returns NXDOMAIN
+
+Solutions:
+    1. Check DNS record in GoDaddy:
+       # Verify CNAME is saved and active
+
+    2. Wait for propagation:
+       # Can take 5-60 minutes depending on TTL
+
+    3. Clear local DNS cache:
+       # macOS:
+       sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
+
+       # Linux:
+       sudo systemd-resolve --flush-caches
+
+    4. Try different DNS resolver:
+       dig @8.8.8.8 invoice.vihan.store +short
+
+    5. Check if domain is registered:
+       whois vihan.store
+
+-------------------------------------------------------------------
+ISSUE: Helm chart fails to install
+-------------------------------------------------------------------
+Symptoms:
+    helm upgrade fails with validation errors
+
+Diagnosis:
+    helm lint ./invoice-app
+    helm template ./invoice-app --debug
+
+Solutions:
+    1. Check values.yaml syntax:
+       yamllint invoice-app/values.yaml
+
+    2. Verify all required values are set:
+       helm install --dry-run --debug invoice-app ./invoice-app
+
+    3. Check template errors:
+       helm template invoice-app ./invoice-app | kubectl apply --dry-run=client -f -
+
+    4. Update Helm:
+       helm version
+       # Should be 3.12+
+
+-------------------------------------------------------------------
+ISSUE: Can't delete namespace (stuck in Terminating)
+-------------------------------------------------------------------
+Symptoms:
+    kubectl delete namespace invoice-app
+    # Hangs indefinitely
+
+Diagnosis:
+    kubectl get namespace invoice-app -o yaml
+    # Check finalizers
+
+Solutions:
+    1. Force delete finalizers:
+       kubectl get namespace invoice-app -o json | \
+         jq '.spec.finalizers = []' | \
+         kubectl replace --raw "/api/v1/namespaces/invoice-app/finalize" -f -
+
+    2. Check for stuck resources:
+       kubectl api-resources --verbs=list --namespaced -o name | \
+         xargs -n 1 kubectl get --show-kind --ignore-not-found -n invoice-app
+
+    3. Delete stuck resources:
+       kubectl delete <resource-type> <name> -n invoice-app --grace-period=0 --force
+
+-------------------------------------------------------------------
+Getting Help:
+-------------------------------------------------------------------
+
+1. Check Kubernetes events:
+   kubectl get events -n invoice-app --sort-by='.lastTimestamp'
+
+2. Describe problem resource:
+   kubectl -n invoice-app describe <resource-type> <name>
+
+3. Check logs:
+   kubectl -n invoice-app logs <pod-name>
+   kubectl -n invoice-app logs <pod-name> --previous  # Previous container
+
+4. AWS Console:
+   - EC2 > Load Balancers (check ALB status)
+   - EC2 > Target Groups (check health)
+   - EKS > Clusters (check cluster status)
+   - CloudWatch Logs (check EKS control plane logs)
+   - VPC > Subnets (check tags and route tables)
+
+5. Useful debugging commands:
+   kubectl get all -n invoice-app
+   kubectl get events -n invoice-app
+   kubectl top pods -n invoice-app
+   kubectl top nodes
+
+6. Export all resources for inspection:
+   kubectl get all,ingress,pvc,secret,configmap -n invoice-app -o yaml > debug.yaml
+
+
+====================================================================
+END OF MANUAL DEPLOYMENT GUIDE
+====================================================================
+
+For automated deployment, use: ./invoice.sh deploy
+
+For automated ArgoCD setup with domain argocd.vihan.store: ./invoice.sh argocd
+
+For status check: ./invoice.sh status
+
+For complete cleanup: ./invoice.sh destroy
+
+====================================================================

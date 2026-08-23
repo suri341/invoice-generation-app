@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: invoice-app
+  namespace: argocd
+  finalizers:
+    # Ensures ArgoCD removes the ALB before the namespace disappears.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: REPO_URL_PLACEHOLDER
+    targetRevision: main
+    path: invoice-app
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: ingress.certificateArn
+          value: ACM_CERT_ARN_PLACEHOLDER
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: invoice-app
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

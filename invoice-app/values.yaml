@@ -1,0 +1,68 @@
+namespace: invoice-app
+
+image:
+  username: vihan341
+  backendTag: 341
+  frontendTag: 341
+  # Tags are reused, so nodes must re-pull instead of serving a cached layer.
+  pullPolicy: Always
+
+backend:
+  replicaCount: 1
+  secretKey: change-this-in-production
+  corsOrigins: https://invoice.vihan.store,http://localhost:3000,http://localhost:5173
+  debug: "False"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+postgres:
+  user: postgres
+  password: postgres
+  database: invoice_db
+  storage: 10Gi
+  storageClassName: gp3
+  createStorageClass: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Loads the sample parts catalogue and demo customers, matching local setup.
+seed:
+  enabled: true
+
+service:
+  backendPort: 8000
+  frontendPort: 80
+  postgresPort: 5432
+
+ingress:
+  enabled: true
+  className: alb
+  host: invoice.vihan.store
+  # Injected by invoice.sh from the Terraform acm_certificate_arn output.
+  certificateArn: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
