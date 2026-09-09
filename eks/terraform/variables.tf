@@ -86,7 +86,7 @@ variable "eks_endpoint_private_access" {
 variable "node_instance_type" {
   description = "EKS worker node instance type. t3.medium allows 17 pods per node; t3.small only allows 11."
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "node_min_size" {

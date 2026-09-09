@@ -4,14 +4,13 @@ metadata:
   name: invoice-app
   namespace: argocd
   finalizers:
-    # Ensures ArgoCD removes the ALB before the namespace disappears.
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
 
   source:
-    repoURL: REPO_URL_PLACEHOLDER
-    targetRevision: main
+    repoURL: https://github.com/suri341/invoice-generation-app
+    targetRevision: HEAD
     path: invoice-app
     helm:
       valueFiles:

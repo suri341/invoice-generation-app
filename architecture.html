@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jagannath Invoice App - EKS Architecture</title>
+  <style>
+    :root { color-scheme: light; --ink: #17324d; --muted: #587089; --line: #9db3c7; --blue: #e8f3ff; --green: #eaf7ee; --gold: #fff3d9; --violet: #f2eaff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px; background: #f5f8fb; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1500px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 48px); letter-spacing: 0; }
+    h2 { margin: 36px 0 14px; font-size: 24px; }
+    .subtitle { margin: 0 0 26px; color: var(--muted); }
+    .diagram { overflow-x: auto; padding: 8px 0 18px; }
+    .flow { min-width: 1120px; display: grid; grid-template-columns: 180px 46px 1fr 46px 250px; align-items: center; gap: 12px; }
+    .box, .group { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: white; box-shadow: 0 3px 12px #17324d12; }
+    .box strong, .group strong { display: block; margin-bottom: 4px; }
+    .box small, .group small { color: var(--muted); }
+    .edge { text-align: center; color: #28648f; font-size: 28px; }
+    .edge small { display: block; color: var(--muted); font-size: 11px; }
+    .outside { background: var(--blue); }
+    .network { padding: 18px; border: 2px solid #6f9fc4; border-radius: 12px; background: #edf5fb; }
+    .network > strong { margin-bottom: 14px; }
+    .subnets { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .subnet { padding: 14px; border: 1px dashed #8da9bd; border-radius: 8px; background: #ffffffb8; }
+    .subnet > strong { display: block; margin-bottom: 10px; }
+    .stack { display: grid; gap: 9px; }
+    .runtime { background: var(--green); border-color: #79ae87; }
+    .data { background: var(--gold); border-color: #c39a4f; }
+    .gitops { background: var(--violet); border-color: #a487c7; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 8px 0 12px; color: var(--muted); }
+    .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 1px solid var(--line); border-radius: 3px; vertical-align: -1px; background: white; }
+    .legend .l-blue::before { background: var(--blue); }
+    .legend .l-green::before { background: var(--green); }
+    .legend .l-gold::before { background: var(--gold); }
+    .legend .l-violet::before { background: var(--violet); }
+    .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .notes .box { min-height: 120px; }
+    @media (max-width: 760px) { body { padding: 20px; } .notes { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Jagannath Invoice App</h1>
+    <p class="subtitle">End-to-end AWS EKS, application runtime, storage, and Argo CD architecture</p>
+    <div class="legend"><span class="l-blue">AWS edge and platform</span><span class="l-green">Kubernetes workloads</span><span class="l-gold">Data and persistence</span><span class="l-violet">GitOps</span></div>
+
+    <section class="diagram" aria-label="Architecture diagram">
+      <div class="flow">
+        <div class="box outside"><strong>Browser</strong><small>Invoice user</small></div>
+        <div class="edge">&rarr;<small>HTTPS</small></div>
+        <div class="network">
+          <strong>AWS ap-south-1 &middot; VPC 10.0.0.0/16</strong>
+          <div class="subnets">
+            <div class="subnet">
+              <strong>Public subnets</strong>
+              <div class="stack">
+                <div class="box outside"><strong>Application ALB</strong><small>invoice.vihan.store<br>ACM TLS &middot; /api and / to services</small></div>
+                <div class="box outside"><strong>Argo CD ALB</strong><small>argocd.vihan.store<br>ACM TLS &middot; HTTPS to argocd-server</small></div>
+                <div class="box outside"><strong>Internet Gateway + NAT</strong><small>NAT provides private-node egress</small></div>
+              </div>
+            </div>
+            <div class="subnet">
+              <strong>Private subnets</strong>
+              <div class="stack">
+                <div class="box outside"><strong>EKS vihan-cluster</strong><small>Managed node group: 2 desired, 2-5 t3.small nodes</small></div>
+                <div class="box runtime"><strong>invoice-app namespace</strong><small>Ingress &middot; ClusterIP services &middot; Deployments</small></div>
+                <div class="box runtime"><strong>argocd namespace</strong><small>Server &middot; repo-server &middot; controller &middot; Redis</small></div>
+                <div class="box outside"><strong>kube-system</strong><small>AWS Load Balancer Controller with IRSA<br>VPC CNI &middot; kube-proxy &middot; CoreDNS</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="edge">&rarr;<small>routes</small></div>
+        <div class="stack">
+          <div class="box runtime"><strong>Frontend</strong><small>React/Vite build in Nginx<br>invoice-frontend:80</small></div>
+          <div class="box runtime"><strong>Backend</strong><small>FastAPI + SQLAlchemy<br>invoice-backend:8000</small></div>
+          <div class="box data"><strong>Database</strong><small>PostgreSQL 15 StatefulSet<br>10 GiB encrypted gp3 EBS PVC</small></div>
+        </div>
+      </div>
+    </section>
+
+    <h2>GitOps and delivery flow</h2>
+    <section class="diagram" aria-label="GitOps flow diagram">
+      <div class="flow">
+        <div class="box outside"><strong>Developer</strong><small>./invoice.sh deploy<br>./invoice.sh argocd</small></div>
+        <div class="edge">&rarr;</div>
+        <div class="network">
+          <strong>Bootstrap order</strong>
+          <div class="stack">
+            <div class="box outside"><strong>Terraform</strong><small>VPC, EKS, nodes, IAM, ACM, add-ons</small></div>
+            <div class="box outside"><strong>Docker Buildx</strong><small>Push amd64 backend and frontend images to Docker Hub</small></div>
+            <div class="box runtime"><strong>Helm</strong><small>Install invoice-app, secrets, workloads, ingress, PVC and seed Job</small></div>
+          </div>
+        </div>
+        <div class="edge">&rarr;</div>
+        <div class="stack">
+          <div class="box gitops"><strong>Git repository</strong><small>Argo CD Application watches main/invoice-app</small></div>
+          <div class="box gitops"><strong>Argo CD</strong><small>Fetches Git, renders Helm, syncs, prunes and self-heals</small></div>
+          <div class="box runtime"><strong>Kubernetes API</strong><small>Desired state applied to invoice-app namespace</small></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="notes">
+      <div class="box"><strong>Traffic</strong><small>Application ALB sends API, docs and health paths to FastAPI; root path goes to Nginx. Argo CD has a separate ALB.</small></div>
+      <div class="box"><strong>Persistence</strong><small>Backend and seed Job connect to the internal invoice-postgres service. The single PostgreSQL pod uses encrypted gp3 EBS.</small></div>
+      <div class="box"><strong>Security note</strong><small>Credentials are currently Helm values rendered into invoice-secrets. Move them to AWS Secrets Manager or External Secrets for production.</small></div>
+    </div>
+  </main>
+</body>
+</html>

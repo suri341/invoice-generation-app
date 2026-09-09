@@ -32,7 +32,9 @@ eks_endpoint_private_access = true
 # admin_public_ip = "49.205.10.20/32"
 #admin_public_ip = "CHANGE_ME/32"
 
-node_instance_type = "t3.small"
+# t3.small allows only 11 pods per node, which system pods nearly fill.
+# t3.medium allows 17 and leaves room for the app plus ArgoCD.
+node_instance_type = "t3.medium"
 
 node_min_size     = 2
 node_desired_size = 2

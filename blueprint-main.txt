@@ -11,6 +11,7 @@ For the automated path, use invoice.sh instead.
 
 CONTENTS
 --------
+0.  Automated path (invoice.sh)
 1.  Architecture
 2.  Required tools
 3.  Local run without Docker
@@ -26,6 +27,53 @@ CONTENTS
 13. Destroy
 14. Resource sizing
 15. Troubleshooting
+
+
+====================================================================
+0. AUTOMATED PATH (invoice.sh)
+====================================================================
+
+Everything in sections 5 to 13 is automated by invoice.sh, which lives
+in the repository root. Use it when you do not need to run each step by
+hand.
+
+    cd ~/Documents/jagannath-invoice-generation-app-main
+    chmod +x invoice.sh
+
+    ./invoice.sh deploy      # sections 5 to 11
+    ./invoice.sh argocd      # section 12
+    ./invoice.sh status      # section 11 checks
+    ./invoice.sh destroy     # section 13, in the correct order
+
+What the script resolves for you, so nothing is copied by hand:
+
+    Value                   Source
+    ----------------------  ----------------------------------------
+    AWS account ID          aws sts get-caller-identity
+    ACM certificate ARN     terraform output acm_certificate_arn
+    DNS validation record   terraform output acm_validation_record_*
+    VPC ID                  terraform output vpc_id
+    IAM policy ARN          built from the account ID
+    App ALB hostname        kubectl get ingress invoice-app
+    ArgoCD ALB hostname     kubectl get ingress argocd-server
+
+The script pauses only when a DNS record must be created in GoDaddy,
+and prints the exact record each time.
+
+Mapping of script stages to the manual sections below:
+
+    create_infrastructure          -> section 5
+    setup_certificate              -> section 6
+    install_load_balancer_controller -> section 7
+    build_images                   -> section 8
+    deploy_application             -> section 9
+    wait_for_alb                   -> section 10
+    verify_deployment              -> section 11
+    install_argocd                 -> section 12
+    destroy_all                    -> section 13
+
+The rest of this document explains each step manually, so you can run,
+debug or automate any individual stage yourself.
 
 
 ====================================================================
@@ -76,57 +124,175 @@ AWS Resources:
 2. REQUIRED TOOLS
 ====================================================================
 
-Install these tools before starting:
+The same tools are needed on every platform. Pick the column that
+matches your machine.
 
-AWS CLI:
-    brew install awscli                # macOS
-    # OR
+--------------------------------------------------------------------
+WINDOWS USERS - READ THIS FIRST
+--------------------------------------------------------------------
+
+invoice.sh is a bash script. Windows cannot run it from PowerShell or
+CMD directly. Choose one of these, then run every command inside it:
+
+Option A - WSL2 (recommended, behaves exactly like Linux)
+
+    # In PowerShell as Administrator:
+    wsl --install -d Ubuntu
+
+    # Reboot, open Ubuntu, then follow the Linux instructions below.
+
+Option B - Git Bash (lighter, good enough)
+
+    Install Git for Windows from https://git-scm.com/download/win
+    Open "Git Bash" and follow the Linux instructions below.
+
+With WSL2, install Docker Desktop for Windows and enable
+Settings > Resources > WSL Integration for your distro. This lets
+docker commands work inside WSL2.
+
+Paths inside WSL2 use Linux form:
+    /home/<user>/jagannath-invoice-generation-app-main
+Your Windows C: drive appears at /mnt/c
+
+--------------------------------------------------------------------
+PACKAGE MANAGER SETUP
+--------------------------------------------------------------------
+
+macOS - install Homebrew if you do not have it:
+
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+Windows - install Chocolatey in PowerShell as Administrator
+(only needed if you install Windows-native tools rather than WSL2):
+
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+Linux and WSL2 - update apt first:
+
+    sudo apt update
+
+--------------------------------------------------------------------
+AWS CLI
+--------------------------------------------------------------------
+
+macOS:
+    brew install awscli
+
+Linux / WSL2:
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
     unzip awscliv2.zip
     sudo ./aws/install
 
-    # Configure credentials
-    aws configure
-    # OR
-    aws sso login
+Windows native:
+    choco install awscli
+    # OR download the MSI from
+    # https://awscli.amazonaws.com/AWSCLIV2.msi
 
-Terraform:
-    brew install terraform             # macOS
-    # OR
-    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
-    unzip terraform_1.5.0_linux_amd64.zip
-    sudo mv terraform /usr/local/bin/
+--------------------------------------------------------------------
+Terraform
+--------------------------------------------------------------------
 
-kubectl:
-    brew install kubectl               # macOS
-    # OR
+macOS:
+    brew tap hashicorp/tap
+    brew install hashicorp/tap/terraform
+
+Linux / WSL2:
+    wget -O- https://apt.releases.hashicorp.com/gpg | \
+      sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+      https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+      sudo tee /etc/apt/sources.list.d/hashicorp.list
+    sudo apt update && sudo apt install terraform
+
+Windows native:
+    choco install terraform
+
+--------------------------------------------------------------------
+kubectl
+--------------------------------------------------------------------
+
+macOS:
+    brew install kubectl
+
+Linux / WSL2:
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
     sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
-Helm:
-    brew install helm                  # macOS
-    # OR
+Windows native:
+    choco install kubernetes-cli
+
+--------------------------------------------------------------------
+Helm
+--------------------------------------------------------------------
+
+macOS:
+    brew install helm
+
+Linux / WSL2:
     curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-eksctl:
-    brew install eksctl                # macOS
-    # OR
-    curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+Windows native:
+    choco install kubernetes-helm
+
+--------------------------------------------------------------------
+eksctl
+--------------------------------------------------------------------
+
+macOS:
+    brew tap weaveworks/tap
+    brew install weaveworks/tap/eksctl
+
+Linux / WSL2:
+    curl --silent --location \
+      "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" \
+      | tar xz -C /tmp
     sudo mv /tmp/eksctl /usr/local/bin
 
-Docker:
-    # macOS: Download Docker Desktop from docker.com
-    # Linux:
+Windows native:
+    choco install eksctl
+
+--------------------------------------------------------------------
+Docker
+--------------------------------------------------------------------
+
+macOS:
+    Download Docker Desktop from https://docker.com
+    Apple Silicon and Intel builds are both available.
+
+Linux:
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
+    sudo usermod -aG docker $USER    # then log out and back in
 
-Verify installations:
-    aws --version           # Should show 2.x
-    terraform --version     # Should show 1.5+
+Windows / WSL2:
+    Install Docker Desktop for Windows, then enable
+    Settings > Resources > WSL Integration for your distro.
+
+--------------------------------------------------------------------
+VERIFY EVERYTHING
+--------------------------------------------------------------------
+
+Run this on any platform. All six must return a version:
+
+    aws --version           # 2.x expected
+    terraform --version     # 1.5+ expected
     kubectl version --client
     helm version
     eksctl version
     docker --version
+
+Then authenticate and confirm the account:
+
+    aws configure
+    aws sts get-caller-identity
+
+If this returns NoCredentials, run "aws sso login --profile <profile>"
+and export AWS_PROFILE in the same shell before continuing.
+
+Note on architecture: docker buildx must produce linux/amd64 images
+because EKS nodes are Intel/AMD. This matters on Apple Silicon and on
+Windows ARM devices. Section 8 covers it.
 
 
 ====================================================================
@@ -1380,12 +1546,14 @@ Diagnosis:
 
 Solutions:
     1. Reduce node count:
-       # Edit eks/terraform/node-group.tf
-       desired_size = 1
-       min_size = 1
+       # Edit eks/terraform/terraform.tfvars
+       node_desired_size = 1
+       node_min_size     = 1
 
-    2. Use smaller instance types:
-       instance_type = "t3.small"  # 2 vCPU, 2 GiB
+    2. Smaller instance types are NOT recommended here:
+       t3.small allows only 11 pods per node. System pods alone consume
+       most of that, which makes the seed job and ArgoCD fail to schedule.
+       Keep t3.medium unless you remove ArgoCD and extra CSI drivers.
 
     3. Use Fargate for specific workloads
 

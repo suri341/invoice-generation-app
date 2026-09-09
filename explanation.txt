@@ -1,0 +1,1039 @@
+JAGANNATH INVOICE APP - COMPLETE EXPLANATION
+=============================================
+
+Last updated: 2026-09-09
+
+This document explains the whole system from first principles.
+It starts with plain language and ends with production detail.
+
+blueprint-main.txt tells you WHAT commands to run.
+This file tells you WHY they work.
+
+
+CONTENTS
+--------
+PART 1  - The idea in plain language
+PART 2  - The three tiers
+PART 3  - The code, file by file
+PART 4  - How a request travels (the single most important concept)
+PART 5  - Running on your laptop
+PART 6  - Running in Docker
+PART 7  - Containers and images explained
+PART 8  - Kubernetes concepts, built up slowly
+PART 9  - The AWS infrastructure, layer by layer
+PART 10 - The complete request path in production
+PART 11 - Storage and why databases are special
+PART 12 - HTTPS and certificates
+PART 13 - GitOps with ArgoCD
+PART 14 - Every problem we hit and why
+PART 15 - Mental models to remember
+
+
+====================================================================
+PART 1 - THE IDEA IN PLAIN LANGUAGE
+====================================================================
+
+The business
+------------
+Jagannath Enterprises sells rice mill spare parts. The owner needs to
+create invoices for customers instead of writing them by hand.
+
+So the software must:
+- remember customers
+- remember parts and prices
+- create an invoice by picking a customer and some parts
+- calculate tax automatically
+- produce a printable PDF
+
+That is the entire product.
+
+The three jobs
+--------------
+Any application like this has three jobs:
+
+1. Show something a human can click        -> the frontend
+2. Decide what is allowed and calculate     -> the backend
+3. Remember things after power off          -> the database
+
+A useful analogy is a restaurant:
+
+    Frontend  = the waiter        (talks to the customer)
+    Backend   = the kitchen       (does the actual work)
+    Database  = the store room    (keeps the ingredients)
+
+The customer never walks into the kitchen. The kitchen never walks
+into the store room without a reason. Each layer talks only to its
+neighbour. This separation is why the system stays understandable.
+
+Why not put everything in one program?
+--------------------------------------
+You could. It would be simpler at first. But then:
+- you cannot scale the busy part alone
+- one crash takes down everything
+- two people cannot work on it without colliding
+- you cannot swap the database without rewriting the screens
+
+Separating the three tiers costs some complexity up front and saves
+much more later.
+
+
+====================================================================
+PART 2 - THE THREE TIERS
+====================================================================
+
+Tier 1 - Frontend
+-----------------
+Technology : React with TypeScript, built by Vite, served by Nginx
+Port       : 80 in containers, 3000 or 5173 in development
+
+What it does:
+The browser downloads HTML, CSS and JavaScript. The JavaScript then
+draws the screens and reacts to clicks. When it needs data it asks the
+backend over HTTP.
+
+Important: the frontend holds no data of its own. Refresh the page and
+everything it shows comes from the backend again.
+
+Tier 2 - Backend
+----------------
+Technology : Python with FastAPI, served by Uvicorn
+Port       : 8000
+
+What it does:
+Receives HTTP requests, validates them, reads or writes the database,
+calculates totals and tax, generates PDFs, and returns JSON.
+
+This is the only tier allowed to touch the database. That rule matters:
+it means all business logic lives in exactly one place.
+
+Tier 3 - Database
+-----------------
+Technology : PostgreSQL 15
+Port       : 5432
+
+What it does:
+Stores rows in tables and keeps them safe on disk. It is the only part
+of the system where losing the contents would actually hurt.
+
+Tables:
+    customers      who we sell to
+    parts          what we sell
+    invoices       the invoice header, one per invoice
+    invoice_items  the lines on an invoice, many per invoice
+
+The relationship pattern:
+    one customer -> many invoices
+    one invoice  -> many invoice_items
+
+This is called a one-to-many relationship, and it is why invoice_items
+is a separate table rather than a column on invoices.
+
+
+====================================================================
+PART 3 - THE CODE, FILE BY FILE
+====================================================================
+
+Backend layout
+--------------
+
+    backend/
+      app/
+        main.py         creates the FastAPI app, wires up routes
+        config.py       reads settings from environment variables
+        database.py     opens the database connection
+        seed_data.py    inserts sample customers and parts
+        models/         table definitions (SQLAlchemy)
+        schemas/        request and response shapes (Pydantic)
+        api/            the actual HTTP endpoints
+        services/       business logic
+        utils/          PDF generation
+      Dockerfile
+      requirements.txt
+
+Why models and schemas are separate:
+
+    models/   describes how data is stored in PostgreSQL
+    schemas/  describes what the API accepts and returns
+
+They are usually similar but not identical. A password might be stored
+in the model but never returned in the schema. Keeping them apart stops
+internal details from leaking out of the API.
+
+The layers inside the backend:
+
+    api/       receives HTTP, returns HTTP.        Knows nothing about SQL.
+    services/  business rules and calculations.    Knows nothing about HTTP.
+    models/    database tables.
+
+A request flows down and the answer flows back up. Each layer can be
+tested on its own.
+
+config.py - the most important file for deployment
+--------------------------------------------------
+It defines settings with defaults:
+
+    DATABASE_URL   where PostgreSQL lives
+    SECRET_KEY     used for signing
+    CORS_ORIGINS   which websites may call this API
+    DEBUG          verbose errors on or off
+
+The defaults are for local development. In Docker and Kubernetes these
+are overridden by environment variables. This is the twelve-factor app
+principle: the same image runs everywhere, and only the environment
+changes.
+
+That single idea is why one image works on your laptop and in AWS.
+
+Frontend layout
+---------------
+
+    frontend/
+      src/
+        main.tsx        entry point
+        App.tsx         routing between pages
+        pages/          Dashboard, Customers, Parts, Invoices
+        components/     reusable pieces such as modals
+        lib/api.ts      every backend call lives here
+        types/          TypeScript type definitions
+      nginx.conf        web server config used in the container
+      Dockerfile
+      vite.config.ts
+
+lib/api.ts - the file that decides where the backend is
+--------------------------------------------------------
+The critical line:
+
+    const API_URL = import.meta.env.VITE_API_URL ?? ''
+
+Read it as: use VITE_API_URL if it was set at build time, otherwise use
+an empty string.
+
+An empty string produces a relative URL. The browser then sends the
+request to whatever host the page came from. This is called same-origin,
+and it is what makes production work without hardcoding a domain.
+
+    VITE_API_URL set to http://localhost:8000
+        -> browser calls http://localhost:8000/api/customers/
+
+    VITE_API_URL empty
+        -> browser calls /api/customers/
+        -> which means https://invoice.vihan.store/api/customers/
+
+One codebase, two behaviours, decided by one environment variable.
+
+Note the trailing slash on collection endpoints:
+
+    api.get('/api/customers/')     correct
+    api.get('/api/customers')      causes a redirect
+
+PART 14 explains why that trailing slash caused a real outage.
+
+
+====================================================================
+PART 4 - HOW A REQUEST TRAVELS
+====================================================================
+
+This is the single most important section. Everything else is detail.
+
+Follow one click: the user opens the Customers page.
+
+Step 1 - the browser asks for the page
+    GET https://invoice.vihan.store/
+    Response: index.html plus JavaScript and CSS
+
+Step 2 - the JavaScript starts running
+    React draws the page shell, then decides it needs customer data.
+
+Step 3 - the JavaScript asks for data
+    GET https://invoice.vihan.store/api/customers/
+    This is a second, separate HTTP request. The page is already on
+    screen at this point, which is why you briefly see "Loading...".
+
+Step 4 - something routes /api to the backend
+    This is the part that differs per environment, and the only part.
+
+        Local dev  : the browser calls port 8000 directly
+        Docker     : Nginx proxies /api to the backend container
+        Kubernetes : the ALB routes /api to the backend Service
+
+Step 5 - the backend handles it
+    FastAPI matches the route, calls the service layer, which queries
+    PostgreSQL, and returns JSON.
+
+Step 6 - the database answers
+    SELECT * FROM customers;
+    Rows come back as Python objects, then become JSON.
+
+Step 7 - the browser renders
+    React receives the JSON array and draws one card per customer.
+
+The key insight
+---------------
+The frontend and backend are two separate programs that only ever
+exchange HTTP requests. They never share memory or variables.
+
+So "connecting frontend to backend" always means exactly one thing:
+making sure the frontend's HTTP request reaches the backend.
+
+Everything that follows is just different ways of doing that.
+
+
+====================================================================
+PART 5 - RUNNING ON YOUR LAPTOP
+====================================================================
+
+Three processes run directly on your machine.
+
+    Terminal 1   PostgreSQL      port 5432
+    Terminal 2   Uvicorn/FastAPI port 8000
+    Terminal 3   Vite dev server port 3000
+
+The connection
+--------------
+The frontend is told explicitly where the backend is:
+
+    frontend/.env
+    VITE_API_URL=http://localhost:8000
+
+So the browser calls:
+
+    http://localhost:8000/api/customers/
+
+The backend is told explicitly where the database is:
+
+    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/invoice_db
+
+Reading that URL left to right:
+    postgresql://   the kind of database
+    postgres:postgres  username and password
+    @localhost      the host
+    :5432           the port
+    /invoice_db     the database name
+
+Cross-origin and CORS
+---------------------
+The page is served from localhost:3000 but calls localhost:8000.
+Different port means different origin, and browsers block that by
+default. This protection is called the same-origin policy.
+
+The backend must therefore explicitly allow it:
+
+    CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+
+The backend then replies with a header saying "localhost:3000 may read
+this response", and the browser permits it.
+
+Notice that in production we avoid CORS entirely by serving the
+frontend and API from the same domain. Fewer moving parts.
+
+Why localhost works
+-------------------
+All three processes share one network stack. "localhost" means this
+machine. There is no isolation to cross.
+
+
+====================================================================
+PART 6 - RUNNING IN DOCKER
+====================================================================
+
+Now each process runs in its own container. Containers are isolated,
+so "localhost" no longer means what it used to.
+
+Critical point
+--------------
+Inside a container, localhost means that container only.
+
+If the backend container tries to reach localhost:5432 it will fail,
+because PostgreSQL is a different container with its own localhost.
+
+The Docker network
+------------------
+    docker network create invoice-net
+
+A Docker network gives containers names that resolve to IP addresses.
+Any container on invoice-net can reach another by container name.
+
+    invoice-postgres  ->  resolves to the database container IP
+    invoice-backend   ->  resolves to the backend container IP
+
+So the connection strings change from localhost to container names:
+
+    DATABASE_URL=postgresql://postgres:postgres@invoice-postgres:5432/invoice_db
+
+Nginx becomes the connector
+---------------------------
+In development, Vite served the frontend. In a container, Nginx does.
+Nginx serves the built files AND forwards API calls.
+
+From frontend/nginx.conf:
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://invoice-backend:8000;
+    }
+
+The first block serves the React app. The second forwards anything
+starting with /api to the backend container.
+
+try_files with /index.html fallback matters for React Router: if a user
+refreshes on /customers, that file does not exist on disk, so Nginx must
+return index.html and let React handle the route.
+
+Why the container name must be exactly invoice-backend
+-------------------------------------------------------
+Because nginx.conf hardcodes that hostname. Name the container anything
+else and Nginx cannot resolve it, producing 502 Bad Gateway.
+
+This is the single most common Docker mistake with this app.
+
+The result: no CORS needed
+--------------------------
+The browser now sees everything on http://localhost:
+
+    http://localhost/           -> Nginx serves the page
+    http://localhost/api/...    -> Nginx forwards to backend
+
+Same origin, so the browser is satisfied. This is the same pattern
+production uses, which is why Docker is a good rehearsal for Kubernetes.
+
+
+====================================================================
+PART 7 - CONTAINERS AND IMAGES EXPLAINED
+====================================================================
+
+An image is a recipe. A container is a running dish made from it.
+One image can produce many identical containers.
+
+Multi-stage builds
+------------------
+The frontend Dockerfile has two stages:
+
+    Stage 1  node    install dependencies, run the build
+    Stage 2  nginx   copy only the built files in
+
+The final image contains no Node.js and no source code, only static
+files and a web server. It is smaller and has less to attack.
+
+The architecture problem we hit
+-------------------------------
+Your Mac has an Apple Silicon chip, which is arm64.
+EKS nodes are t3.medium, which are Intel/AMD, which is amd64.
+
+A plain "docker build" on a Mac produces an arm64 image. Kubernetes
+then refuses it:
+
+    no match for platform in manifest: not found
+
+The fix is to build for the target platform explicitly:
+
+    docker buildx build --platform linux/amd64 -t name:tag . --push
+
+Verify before deploying:
+
+    docker manifest inspect vihan341/invoice-backend:341 | grep architecture
+
+It must say amd64. This is why invoice.sh always passes --platform.
+
+Tags and the caching trap
+-------------------------
+A tag such as :341 is a label, not a fixed identity. Pushing again with
+the same tag moves the label to a new image.
+
+Kubernetes defaults to imagePullPolicy: IfNotPresent, meaning "if a
+local copy exists, use it". With a reused tag, the node keeps serving
+the old image forever.
+
+We hit exactly this. The proof was comparing digests:
+
+    running: sha256:8dff58be...
+    pushed:  sha256:1fed2421...
+
+Two options:
+    1. use a new tag every build   (best practice)
+    2. set imagePullPolicy: Always (what values.yaml does)
+
+Option 1 is better because it makes deployments reproducible. Option 2
+is convenient during development.
+
+
+====================================================================
+PART 8 - KUBERNETES CONCEPTS, BUILT UP SLOWLY
+====================================================================
+
+Docker runs containers on one machine. Kubernetes runs containers
+across many machines, restarts them when they die, and gives them
+stable addresses.
+
+Concepts in dependency order:
+
+Pod
+    The smallest unit. One or more containers that share a network
+    address. Almost always one container in practice.
+    Pods are disposable. They get deleted and recreated with new IPs.
+
+ReplicaSet
+    Keeps N copies of a Pod running. If one dies, it makes another.
+
+Deployment
+    Manages ReplicaSets and handles rolling updates. This is what you
+    actually write for stateless apps like the frontend and backend.
+
+Service
+    A stable name and IP in front of a changing set of Pods.
+    Because Pod IPs change, nothing should ever address a Pod directly.
+
+    invoice-backend   -> always reaches a healthy backend Pod
+    invoice-postgres  -> always reaches the database Pod
+
+    This is why the backend can use "invoice-postgres" as a hostname
+    and never care which Pod or node it is on.
+
+StatefulSet
+    Like a Deployment, but for things that must keep their identity and
+    their disk. PostgreSQL uses this.
+
+    Deployment  : pods are interchangeable, name is random
+    StatefulSet : pods are numbered, invoice-postgres-0 keeps its volume
+
+Namespace
+    A folder for grouping resources. We use invoice-app for the app,
+    kube-system for cluster components, and argocd for GitOps.
+
+Ingress
+    Rules for routing outside traffic to Services, based on hostname
+    and URL path. An Ingress is only a rule set; something must
+    implement it. On AWS that is the Load Balancer Controller, which
+    reads the Ingress and creates a real ALB.
+
+Job
+    Runs a task once until it completes, then stops. Our seed job uses
+    this to load sample data.
+
+How our chart uses these:
+
+    namespace.yaml            Namespace
+    secret.yaml               Secret with DB URL and keys
+    storageclass.yaml         StorageClass for gp3 disks
+    postgres-statefulset.yaml StatefulSet plus its volume claim
+    postgres-service.yaml     Service named invoice-postgres
+    backend-deployment.yaml   Deployment
+    backend-service.yaml      Service named invoice-backend
+    frontend-deployment.yaml  Deployment
+    frontend-service.yaml     Service named invoice-frontend
+    ingress.yaml              Ingress that becomes the ALB
+    seed-job.yaml             Job for sample data
+
+Helm
+    Kubernetes YAML with variables. The templates contain placeholders
+    such as {{ .Values.image.backendTag }}, and values.yaml fills them.
+    This is how one chart serves multiple environments.
+
+    Preview what will be applied without applying it:
+        helm template invoice-app ./invoice-app -f invoice-app/values.yaml
+
+Init containers and ordering
+----------------------------
+Kubernetes starts pods in parallel, so the backend may start before
+PostgreSQL is ready. An init container solves this:
+
+    until pg_isready -h invoice-postgres ...; do sleep 2; done
+
+The main container does not start until this finishes. That is why you
+briefly see the backend in Init:0/1 during a fresh deploy. It is normal,
+not a failure.
+
+
+====================================================================
+PART 9 - THE AWS INFRASTRUCTURE, LAYER BY LAYER
+====================================================================
+
+Terraform builds this in eks/terraform. Each layer depends on the one
+before it.
+
+Layer 1 - VPC
+    A private network, 10.0.0.0/16, roughly 65000 addresses.
+    Nothing outside can reach it unless you allow it.
+
+Layer 2 - Subnets
+    Slices of the VPC, each tied to one availability zone (a physical
+    data centre). Two zones means the app survives one failing.
+
+    Public  10.0.1.0/24  (zone a)   ALB lives here
+    Public  10.0.2.0/24  (zone b)   ALB lives here
+    Private 10.0.11.0/24 (zone a)   worker nodes live here
+    Private 10.0.12.0/24 (zone b)   worker nodes live here
+
+    Public means it has a route to the internet gateway.
+    Private means it does not.
+
+    Worker nodes are private on purpose. Nothing from the internet can
+    reach them directly. Traffic must arrive through the ALB.
+
+Layer 3 - Internet Gateway and NAT Gateway
+    Internet Gateway  : lets public subnets talk to the internet both ways
+    NAT Gateway       : lets private subnets make outbound calls only
+
+    The nodes need outbound access to pull container images, but must
+    not be reachable inbound. NAT gives exactly that asymmetry.
+
+Layer 4 - Subnet tags
+    These look trivial and are essential:
+
+        kubernetes.io/role/elb          = 1   on public subnets
+        kubernetes.io/role/internal-elb = 1   on private subnets
+        kubernetes.io/cluster/<name>    = shared
+
+    The Load Balancer Controller finds subnets by reading these tags.
+    Without them it cannot decide where to place the ALB.
+
+Layer 5 - EKS control plane
+    AWS runs and manages the Kubernetes API for you. You never see
+    those servers. The endpoint is configured as public and private so
+    kubectl works from a laptop.
+
+Layer 6 - Node group
+    The EC2 machines that actually run pods, placed in private subnets.
+
+Layer 7 - Addons
+    vpc-cni     gives each pod a real VPC IP address
+    kube-proxy  makes Services routable
+    coredns     resolves Service names such as invoice-postgres
+    ebs-csi     lets Kubernetes create EBS disks for PVCs
+
+    vpc-cni matters more than it sounds: because each pod gets a real
+    VPC IP, the ALB can send traffic straight to a pod. That is what
+    target-type: ip means in the Ingress.
+
+Layer 8 - IAM and IRSA
+    IAM controls what may call AWS APIs. Pods need this to create ALBs
+    or EBS volumes.
+
+    IRSA maps a Kubernetes ServiceAccount to an IAM role using OIDC:
+
+        pod -> ServiceAccount -> OIDC trust -> IAM role -> AWS permissions
+
+    This avoids putting AWS keys in the cluster. It is also the part
+    that broke repeatedly, because the ServiceAccount must exist before
+    the controller starts.
+
+Layer 9 - ACM certificate
+    A TLS certificate for *.vihan.store plus vihan.store. Wildcard so
+    one certificate covers invoice.vihan.store and argocd.vihan.store.
+
+Why pod capacity depends on instance size
+-----------------------------------------
+On EKS with vpc-cni, pods get VPC IPs from network interfaces attached
+to the node. Bigger instances allow more interfaces, so more pods.
+
+    t3.small   11 pods
+    t3.medium  17 pods
+    t3.large   35 pods
+
+That limit is about IP addresses, not CPU or memory. This is unusual
+and surprising, and it is why the seed job would not schedule on
+t3.small even though CPU was idle.
+
+Rough budget for two t3.medium nodes, 34 slots:
+
+    DaemonSets, 4 per node                        8
+    CoreDNS                                       2
+    EBS CSI controller                            2
+    Load Balancer Controller                      2
+    Application: frontend, backend, postgres      3
+    Seed job, temporary                           1
+    ArgoCD, trimmed                               4
+    ------------------------------------------  ---
+    Total                                        22
+    Free                                         12
+
+
+====================================================================
+PART 10 - THE COMPLETE REQUEST PATH IN PRODUCTION
+====================================================================
+
+End to end, from a user typing the address to a row in PostgreSQL.
+
+Step 1 - DNS
+    Browser asks: where is invoice.vihan.store?
+    GoDaddy answers with a CNAME to the ALB hostname.
+    DNS resolves that to two public IPs, one per availability zone.
+
+Step 2 - TLS
+    Browser opens port 443 to the ALB.
+    ALB presents the ACM certificate. Browser verifies it and both
+    sides agree on encryption. The padlock appears.
+
+Step 3 - ALB routing
+    The ALB reads the path and applies the Ingress rules:
+
+        /api          -> invoice-backend:8000
+        /docs         -> invoice-backend:8000
+        /health       -> invoice-backend:8000
+        /             -> invoice-frontend:80
+
+    Longest and most specific paths are matched first, so /api wins
+    over / for API calls.
+
+Step 4 - into the private subnet
+    The ALB sends the request to a pod IP directly, because
+    target-type is ip and vpc-cni gave pods real VPC addresses.
+
+    The ALB is in the public subnet, the pod is in the private subnet.
+    They are in the same VPC, so this is internal routing.
+
+Step 5 - the frontend responds
+    For "/", Nginx returns index.html and the JavaScript bundle.
+
+Step 6 - the browser calls the API
+    Because VITE_API_URL is empty, the call is same-origin:
+
+        https://invoice.vihan.store/api/customers/
+
+    This goes back out to the ALB and this time matches /api.
+
+Step 7 - the backend
+    FastAPI receives it and needs the database.
+
+Step 8 - Service discovery
+    The backend connects to "invoice-postgres". CoreDNS resolves that
+    Service name to a stable cluster IP, which forwards to the pod.
+
+    The backend never knows the pod IP, and does not need to.
+
+Step 9 - the database
+    PostgreSQL reads from its EBS volume and returns rows.
+
+Step 10 - back out
+    JSON travels back through the same path and React renders it.
+
+Summary diagram:
+
+    User
+      | DNS
+    GoDaddy CNAME
+      |
+    ALB (public subnet, HTTPS terminated here)
+      |
+      +-- /       --> invoice-frontend Service --> Nginx pod
+      |
+      +-- /api    --> invoice-backend Service  --> FastAPI pod
+                                                     |
+                                              invoice-postgres Service
+                                                     |
+                                              PostgreSQL pod
+                                                     |
+                                              EBS gp3 volume
+
+Notice where TLS ends: at the ALB. Inside the cluster traffic is plain
+HTTP. That detail causes a real bug, explained in PART 14.
+
+
+====================================================================
+PART 11 - STORAGE AND WHY DATABASES ARE SPECIAL
+====================================================================
+
+Containers are ephemeral. Delete a pod and everything written inside it
+disappears. That is fine for the frontend and backend, which store
+nothing, and unacceptable for PostgreSQL.
+
+The chain of objects:
+
+    StorageClass          how to create disks         gp3, encrypted
+    PersistentVolumeClaim a request for a disk        10Gi
+    PersistentVolume      the actual disk             created by AWS
+    EBS volume            the AWS resource            survives pods
+
+Flow:
+    StatefulSet asks for storage
+    -> PVC is created
+    -> StorageClass tells the EBS CSI driver how
+    -> driver creates the EBS volume
+    -> volume is attached to the node and mounted in the pod
+
+The gp3 problem we hit
+----------------------
+EKS ships only a gp2 StorageClass by default. Our chart asked for gp3,
+which did not exist, so the PVC stayed Pending forever and the pod could
+never schedule.
+
+The fix was to create the class ourselves, in storageclass.yaml:
+
+    provisioner: ebs.csi.aws.com
+    volumeBindingMode: WaitForFirstConsumer
+    parameters:
+      type: gp3
+      encrypted: "true"
+
+WaitForFirstConsumer is subtle and important. It delays creating the
+disk until Kubernetes knows which node the pod landed on. EBS volumes
+are tied to one availability zone, so creating the disk too early could
+put it in a zone where the pod cannot run.
+
+Why a StatefulSet
+-----------------
+volumeClaimTemplates gives each replica its own disk, and the pod keeps
+a stable name. invoice-postgres-0 always reattaches to its own volume
+after a restart. A Deployment cannot promise that.
+
+
+====================================================================
+PART 12 - HTTPS AND CERTIFICATES
+====================================================================
+
+HTTPS provides encryption, identity and integrity. The certificate is
+what proves identity.
+
+Why DNS validation
+------------------
+ACM must confirm you control the domain. It gives you a unique CNAME
+record. If you can publish it, you control the DNS, so you control the
+domain.
+
+    Terraform creates the certificate   -> status PENDING_VALIDATION
+    You add the CNAME in GoDaddy
+    ACM checks it                       -> status ISSUED
+
+The certificate cannot be attached to a load balancer until ISSUED.
+Attempting it earlier produces:
+
+    CertificateNotFound
+
+Two different DNS records
+-------------------------
+People confuse these constantly. They do different jobs.
+
+    Record 1  _abc123.invoice   ->  _xyz.acm-validations.aws
+              Purpose: prove ownership. Used once by ACM.
+
+    Record 2  invoice           ->  k8s-invoicea-....elb.amazonaws.com
+              Purpose: send users to the ALB. Used on every visit.
+
+Record 1 is created before the ALB exists.
+Record 2 can only be created after, because the hostname is unknown
+until the ALB is built.
+
+The ALB hostname changes every time the ALB is recreated, so record 2
+must be updated after any destroy and redeploy.
+
+Wildcard certificate
+--------------------
+We issue *.vihan.store plus vihan.store, so one certificate covers
+invoice.vihan.store and argocd.vihan.store. Fewer validations, less
+to manage.
+
+TLS termination
+---------------
+The ALB decrypts HTTPS and forwards plain HTTP inside the VPC. The
+application never handles certificates. This is normal and efficient,
+but the backend must be told the original request was HTTPS, which is
+the subject of the mixed-content bug in PART 14.
+
+
+====================================================================
+PART 13 - GITOPS WITH ARGOCD
+====================================================================
+
+Normal deployment is push based: you run helm upgrade from your laptop.
+The cluster does whatever the last person told it to do.
+
+GitOps inverts this. Git is the source of truth, and an agent inside
+the cluster continuously makes reality match Git.
+
+    Push model    laptop  ---> cluster
+    GitOps model  cluster ---> git   (pulls and reconciles)
+
+Advantages:
+    the desired state is versioned and reviewable
+    drift is corrected automatically
+    rollback is a git revert
+    no one needs cluster credentials to deploy
+
+The Application resource
+------------------------
+argocd/application.yaml tells ArgoCD:
+
+    source       which repo, branch and path
+    destination  which cluster and namespace
+    syncPolicy   how to behave
+
+Key settings:
+
+    prune: true       delete things removed from git
+    selfHeal: true    revert manual changes made in the cluster
+
+selfHeal has a consequence worth internalising: once ArgoCD owns the
+app, running kubectl edit or helm upgrade by hand is pointless. ArgoCD
+will undo it. Change values.yaml in git instead.
+
+This is also why destroy must delete the ArgoCD Application first.
+Otherwise you delete the app and ArgoCD immediately recreates it.
+
+Why Helm and not raw manifests
+------------------------------
+We install ArgoCD with its official Helm chart so we can disable parts
+we do not use:
+
+    dex.enabled=false             external identity, not needed
+    notifications.enabled=false   Slack alerts, not needed
+    applicationSet.enabled=false  multi-cluster generation, not needed
+
+That saves three pods, which matters given the pod limits in PART 9.
+Helm also makes upgrades and uninstalls a single command.
+
+
+====================================================================
+PART 14 - EVERY PROBLEM WE HIT AND WHY
+====================================================================
+
+These are real failures from this project. Each one teaches something.
+
+1. Terraform IAM module submodule not found
+   Symptom : Unreadable module directory
+   Cause   : the submodule path existed in IAM module v5 but not v6
+   Lesson  : module paths are part of the version contract
+
+2. IAM role name too long
+   Symptom : expected length of name_prefix to be in range 1-38
+   Cause   : Terraform appended a hyphen to make a prefix, exceeding it
+   Fix     : use_name_prefix = false
+   Lesson  : AWS name limits differ between name and name_prefix
+
+3. Node group created but cluster would not delete
+   Symptom : ResourceInUseException, cluster has nodegroups attached
+   Cause   : node group creation failed, so it was never saved to state,
+             but AWS still had the failed object
+   Lesson  : failed creates can leave resources Terraform does not track
+
+4. Nodes never became Ready
+   Cause   : CNI installed after nodes launched
+   Fix     : before_compute = true for vpc-cni
+   Lesson  : nodes cannot become Ready without pod networking
+
+5. ImagePullBackOff, no match for platform
+   Cause   : arm64 image from Apple Silicon, amd64 nodes
+   Fix     : docker buildx --platform linux/amd64
+   Lesson  : image architecture must match node architecture
+
+6. PostgreSQL pod stuck Pending
+   Cause   : gp3 StorageClass did not exist, only gp2
+   Fix     : create the StorageClass in the chart
+   Lesson  : a PVC referencing a missing class waits forever
+
+7. ALB never created
+   Symptom : FailedBuildModel, no certificate found for host
+   Cause   : certificateArn empty and no matching ACM certificate
+   Lesson  : read Ingress events, they name the exact problem
+
+8. Controller had zero pods
+   Symptom : serviceaccount not found
+   Cause   : Helm set serviceAccount.create=false but none existed
+   Lesson  : create=false is a promise that it already exists
+
+9. eksctl said it existed, kubectl said not found
+   Cause   : orphaned CloudFormation stack from a previous attempt
+   Lesson  : eksctl tracks CloudFormation, kubectl tracks the cluster.
+             They can disagree.
+
+10. Controller CrashLoopBackOff
+    Symptom : failed to get VPC ID from instance metadata
+    Cause   : installed without vpcId, so it queried EC2 metadata
+    Fix     : always pass --set vpcId
+    Lesson  : read the crashed container log with --previous
+
+11. Seed job Pending, Helm stuck at pending-install
+    Symptom : 0/2 nodes available, too many pods
+    Cause   : t3.small allows only 11 pods per node
+    Lesson  : EKS pod limits come from IP capacity, not CPU
+
+12. Site loaded but no data appeared
+    Symptom : API redirect returned Location: http://...
+    Cause   : ALB terminates TLS, so uvicorn saw plain HTTP and built
+              redirects with http, which the browser blocked as mixed
+              content
+    Fix     : uvicorn --proxy-headers --forwarded-allow-ips "*"
+    Lesson  : behind a proxy, the app must trust X-Forwarded-Proto.
+              curl did not reveal it because curl ignores mixed content.
+
+13. New image pushed but old code kept running
+    Cause   : same tag plus imagePullPolicy IfNotPresent
+    Proof   : running digest differed from pushed digest
+    Lesson  : compare digests, not tags
+
+14. Saving records failed while reading worked
+    Cause   : POST /api/customers returned 307 to the trailing-slash URL,
+              and the proxy did not reliably replay the body
+    Fix     : call /api/customers/ directly
+    Lesson  : redirects are risky for POST. Match the server's exact path.
+
+15. Destroy failed with DependencyViolation
+    Cause   : the ALB is created by the controller, not Terraform, so
+              Terraform has no dependency on it. Removing the controller
+              first orphaned the ALB and its network interfaces stayed
+              in the subnets.
+    Fix     : delete the Ingress while the controller is still running
+    Lesson  : anything created outside Terraform must be removed first,
+              and in reverse order of creation
+
+16. Corporate network showed a security warning
+    Cause   : the proxy blocks newly registered domains for about 30 days
+    Effect  : API calls returned HTML block pages instead of JSON
+    Lesson  : not every failure is in your code
+
+
+====================================================================
+PART 15 - MENTAL MODELS TO REMEMBER
+====================================================================
+
+If you remember nothing else, remember these.
+
+1. Frontend to backend is always just HTTP
+   Only the routing mechanism changes per environment.
+       local      browser -> port 8000
+       docker     browser -> Nginx -> container name
+       kubernetes browser -> ALB -> Service -> pod
+
+2. Same origin removes a whole class of problems
+   Serving the app and API on one domain eliminates CORS and mixed
+   content. This is why VITE_API_URL is empty in production.
+
+3. Names are stable, addresses are not
+   Pod IPs change constantly. Always address a Service name.
+
+4. Declare the desired state, do not issue instructions
+   Terraform, Kubernetes and ArgoCD all work this way. You describe
+   what should exist; the system decides how to get there.
+
+5. Environment configures the image, the image never changes
+   One artifact runs everywhere. Only environment variables differ.
+
+6. Storage outlives compute
+   Pods are disposable. Volumes are not. Treat data as special.
+
+7. Creation order reverses on deletion
+   Build network, then cluster, then controller, then app.
+   Delete app, then controller, then cluster, then network.
+
+8. Anything created outside Terraform must be cleaned up first
+   The ALB is the classic example.
+
+9. Read the events, not just the status
+   Pending and CrashLoopBackOff are symptoms. The cause is in
+   kubectl describe events or the previous container log.
+
+10. Prove it, do not assume it
+    Compare image digests. Check the Location header. Read the actual
+    node pod capacity. Most of the hard bugs above were only solved
+    once someone looked at the real value instead of the expected one.
+
+
+Where to go next
+----------------
+    blueprint-main.txt   the commands, step by step
+    invoice.sh           the same steps, automated
+    ARCHITECTURE.md      diagrams and component detail
+
+Read this file to understand the system.
+Read blueprint-main.txt when you need to operate it.

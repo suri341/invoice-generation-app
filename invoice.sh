@@ -8,6 +8,7 @@
 #   ./invoice.sh status     Show current deployment state
 #   ./invoice.sh destroy    Remove everything in dependency-safe order
 #
+# Runs on macOS, Linux and Windows (Git Bash or WSL2).
 # No values need to be copied by hand. Every ARN, VPC ID and ALB hostname
 # is read from Terraform outputs or the live cluster.
 
@@ -17,7 +18,10 @@ set -euo pipefail
 # Configuration
 # ----------------------------------------------------------------
 
-REPO_ROOT="${REPO_ROOT:-$HOME/Documents/jagannath-invoice-generation-app-main}"
+# Resolve the repository from this script's own location, so the script
+# works from any directory on any machine.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${REPO_ROOT:-$SCRIPT_DIR}"
 TF_DIR="$REPO_ROOT/eks/terraform"
 CHART_DIR="$REPO_ROOT/invoice-app"
 ARGOCD_DIR="$REPO_ROOT/argocd"

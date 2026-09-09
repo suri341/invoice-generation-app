@@ -12,6 +12,8 @@ A modern, full-stack three-tier application for generating invoices and quotatio
 
 ## 🏗️ Architecture
 
+The complete AWS EKS and Argo CD architecture is documented in [ARCHITECTURE.md](ARCHITECTURE.md), including runtime traffic, provisioning order, GitOps reconciliation, storage, networking, and security boundaries. For a diagram that opens directly in a browser, open [architecture.html](architecture.html).
+
 **Three-Tier Application:**
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐

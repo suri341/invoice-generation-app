@@ -2,8 +2,8 @@ namespace: invoice-app
 
 image:
   username: vihan341
-  backendTag: 341
-  frontendTag: 341
+  backendTag: "341"
+  frontendTag: "341"
   # Tags are reused, so nodes must re-pull instead of serving a cached layer.
   pullPolicy: Always
 
