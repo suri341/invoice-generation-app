@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { invoicesApi } from '@/lib/api'
-import { Plus, Search, Download, Eye, Trash2, Pencil, ArrowRight, Filter, RefreshCw, Calendar, Network } from 'lucide-react'
+import { Plus, Search, Download, Eye, Trash2, Pencil, ArrowRight, RefreshCw } from 'lucide-react'
 import { formatCurrency, formatDate, downloadBlob } from '@/lib/utils'
 import type { Invoice } from '@/types'
 

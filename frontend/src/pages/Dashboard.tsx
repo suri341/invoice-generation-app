@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
-import { FileText, Users, Package, TrendingUp, Eye, EyeOff, Calendar, Clock, RefreshCw } from 'lucide-react'
+import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 export default function Dashboard() {
