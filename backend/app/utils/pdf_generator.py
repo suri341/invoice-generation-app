@@ -104,6 +104,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     copy_text = "Quotation" if is_quotation else "Original Copy"
     number_label = "Quotation No." if is_quotation else "Invoice No."
 
+    customer = invoice.customer
     customer_state = customer.state or ""
     meta_data = [
         [p("Party Details", section), "", p(number_label, label), p(": " + invoice.invoice_number, normal)],
