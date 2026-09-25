@@ -52,6 +52,10 @@ export interface Invoice {
     company_name?: string
     phone: string
   }
+  source_quotation?: {
+    id: number
+    invoice_number: string
+  }
   invoice_date: string
   due_date?: string
   subtotal: number

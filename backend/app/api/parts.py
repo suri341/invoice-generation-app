@@ -7,6 +7,12 @@ from app.schemas.part import PartCreate, PartUpdate, PartResponse
 
 router = APIRouter()
 
+PART_CATEGORIES = [
+    "Rubber rolls", "Sieves", "Stones", "Bearings", "Flanges", "Feed screw",
+    "Shafts", "Aspiration hose", "Belts", "Pulley", "Pneumatic system",
+    "Electric item", "Motor", "Nut bolts",
+]
+
 
 @router.get("/", response_model=List[PartResponse])
 def get_parts(
@@ -34,8 +40,7 @@ def get_parts(
 
 @router.get("/categories", response_model=List[str])
 def get_categories(db: Session = Depends(get_db)):
-    categories = db.query(Part.category).distinct().all()
-    return [cat[0] for cat in categories if cat[0]]
+    return PART_CATEGORIES
 
 
 @router.post("/", response_model=PartResponse, status_code=status.HTTP_201_CREATED)

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from datetime import datetime
-from app.models.invoice import Invoice, InvoiceItem
+from app.models.invoice import Invoice, InvoiceItem, InvoiceType
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
 from app.config import settings
 
@@ -126,7 +126,7 @@ class InvoiceService:
 
             amounts = self.calculate_amounts(
                 new_items,
-                invoice_update.discount_percentage or invoice.discount_percentage
+                invoice.discount_percentage if invoice_update.discount_percentage is None else invoice_update.discount_percentage
             )
             invoice.subtotal = amounts["subtotal"]
             invoice.discount_amount = amounts["discount_amount"]
@@ -138,6 +138,38 @@ class InvoiceService:
         self.db.commit()
         self.db.refresh(invoice)
 
+        return invoice
+
+    def convert_quotation_to_invoice(self, quotation: Invoice) -> Invoice:
+        invoice = Invoice(
+            invoice_number=self.generate_invoice_number(InvoiceType.INVOICE.value),
+            invoice_type=InvoiceType.INVOICE,
+            customer_id=quotation.customer_id,
+            source_quotation_id=quotation.id,
+            invoice_date=datetime.now(),
+            due_date=quotation.due_date,
+            discount_percentage=quotation.discount_percentage,
+            notes=quotation.notes,
+            terms_conditions=quotation.terms_conditions or self.get_default_terms(),
+        )
+        invoice.items = [
+            InvoiceItem(
+                part_id=item.part_id,
+                part_name=item.part_name,
+                description=item.description,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=item.unit_price,
+                amount=item.amount,
+            )
+            for item in quotation.items
+        ]
+        amounts = self.calculate_amounts(invoice.items, invoice.discount_percentage)
+        for field, value in amounts.items():
+            setattr(invoice, field, value)
+        self.db.add(invoice)
+        self.db.commit()
+        self.db.refresh(invoice)
         return invoice
 
     def get_default_terms(self) -> str:

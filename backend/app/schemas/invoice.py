@@ -30,7 +30,7 @@ class InvoiceItemResponse(BaseModel):
 
 class InvoiceCreate(BaseModel):
     customer_id: int
-    invoice_type: InvoiceType = InvoiceType.INVOICE
+    invoice_type: InvoiceType = InvoiceType.QUOTATION
     invoice_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     discount_percentage: float = Field(default=0.0, ge=0, le=100)
@@ -58,6 +58,14 @@ class CustomerBrief(BaseModel):
         from_attributes = True
 
 
+class SourceQuotationBrief(BaseModel):
+    id: int
+    invoice_number: str
+
+    class Config:
+        from_attributes = True
+
+
 class InvoiceResponse(BaseModel):
     id: int
     invoice_number: str
@@ -65,6 +73,7 @@ class InvoiceResponse(BaseModel):
     status: InvoiceStatus
     customer_id: int
     customer: CustomerBrief
+    source_quotation: Optional[SourceQuotationBrief] = None
     invoice_date: datetime
     due_date: Optional[datetime]
     subtotal: float

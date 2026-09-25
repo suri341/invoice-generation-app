@@ -23,6 +23,7 @@ class Invoice(Base):
     status = Column(SQLEnum(InvoiceStatus), default=InvoiceStatus.COMPLETED)
 
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    source_quotation_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
 
     invoice_date = Column(DateTime(timezone=True), server_default=func.now())
     due_date = Column(DateTime(timezone=True))
@@ -43,6 +44,7 @@ class Invoice(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     customer = relationship("Customer", back_populates="invoices")
+    source_quotation = relationship("Invoice", remote_side=[id], foreign_keys=[source_quotation_id])
     items = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
 
     def __repr__(self):

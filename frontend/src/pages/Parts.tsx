@@ -9,6 +9,8 @@ import { formatCurrency } from '@/lib/utils'
 import PartModal from '@/components/PartModal'
 import type { Part } from '@/types'
 
+const PART_CATEGORIES = ['Rubber rolls', 'Sieves', 'Stones', 'Bearings', 'Flanges', 'Feed screw', 'Shafts', 'Aspiration hose', 'Belts', 'Pulley', 'Pneumatic system', 'Electric item', 'Motor', 'Nut bolts']
+
 export default function Parts() {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('')
@@ -19,11 +21,6 @@ export default function Parts() {
   const { data: parts, isLoading } = useQuery({
     queryKey: ['parts', search, selectedCategory],
     queryFn: () => partsApi.getAll({ search, category: selectedCategory || undefined }).then(res => res.data),
-  })
-
-  const { data: categories } = useQuery({
-    queryKey: ['part-categories'],
-    queryFn: () => partsApi.getCategories().then(res => res.data),
   })
 
   const createMutation = useMutation({
@@ -108,7 +105,7 @@ export default function Parts() {
               className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
-              {categories?.map((category) => (
+              {PART_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>

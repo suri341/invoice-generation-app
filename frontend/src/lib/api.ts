@@ -48,7 +48,7 @@ export const partsApi = {
 }
 
 export const invoicesApi = {
-  getAll: (params?: { status?: string; customer_id?: number; search?: string; skip?: number; limit?: number }) =>
+  getAll: (params?: { status?: string; customer_id?: number; search?: string; date_from?: string; date_to?: string; skip?: number; limit?: number }) =>
     api.get<Invoice[]>('/api/invoices/', { params }),
 
   getById: (id: number) =>
@@ -56,6 +56,9 @@ export const invoicesApi = {
 
   create: (data: CreateInvoiceData) =>
     api.post<Invoice>('/api/invoices/', data),
+
+  convert: (id: number) =>
+    api.post<Invoice>(`/api/invoices/${id}/convert`),
 
   update: (id: number, data: Partial<CreateInvoiceData>) =>
     api.put<Invoice>(`/api/invoices/${id}`, data),

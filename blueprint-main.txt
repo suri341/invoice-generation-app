@@ -372,9 +372,13 @@ Step 5: Test the application
 
 Run the application using Docker containers:
 
+You need to create the docker network before starting the steps -
+docker network create invoice-network
+
 Step 1: Start PostgreSQL container
     docker run -d \
       --name invoice-postgres \
+      --network invoice-network \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
       -e POSTGRES_DB=invoice_db \
@@ -389,6 +393,7 @@ Step 2: Build and run backend
 
     docker run -d \
       --name invoice-backend \
+      --network invoice-network \
       -p 8000:8000 \
       -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/invoice_db" \
       -e SECRET_KEY="change-this-in-production" \
@@ -398,30 +403,36 @@ Step 2: Build and run backend
 
     # Wait for backend to be healthy
     sleep 10
-    curl http://localhost:8000/health
+    
+curl http://localhost:8000/health
+Step 3: Seed the local Docker database
+    # This inserts missing sample parts and customers without changing
+    # seed_data.py or the Kubernetes seed Job.
+    docker exec invoice-backend python3 -c 'from app.seed_data import RICE_MILL_PARTS,SAMPLE_CUSTOMERS; from app.database import SessionLocal,init_db; from app.models.part import Part; from app.models.customer import Customer; init_db(); db=SessionLocal(); existing_parts={x.name for x in db.query(Part).all()}; existing_emails={x.email for x in db.query(Customer).all()}; db.add_all([Part(**x) for x in RICE_MILL_PARTS if x["name"] not in existing_parts]); db.add_all([Customer(**x) for x in SAMPLE_CUSTOMERS if x["email"] not in existing_emails]); db.commit(); print("Local seed completed"); db.close()'
 
-Step 3: Build and run frontend
+Step 4: Build and run frontend
     cd ../frontend
 
     docker build -t invoice-frontend .
 
     docker run -d \
       --name invoice-frontend \
+      --network invoice-network \
       -p 80:80 \
       invoice-frontend
 
     # Frontend will be available at http://localhost
 
-Step 4: Access the application
+Step 5: Access the application
     Open browser: http://localhost
     API docs: http://localhost:8000/docs
 
-Step 5: View logs
+Step 6: View logs
     docker logs invoice-backend
     docker logs invoice-frontend
     docker logs invoice-postgres
 
-Step 6: Stop and cleanup
+Step 7: Stop and cleanup
     docker stop invoice-backend invoice-frontend invoice-postgres
     docker rm invoice-backend invoice-frontend invoice-postgres
     docker volume rm invoice_db_data
@@ -1471,8 +1482,7 @@ Solutions:
        kubectl -n invoice-app get endpoints
 
     3. Test backend health endpoint:
-       kubectl -n invoice-app port-forward svc/invoice-backend 8000:8000
-       curl http://localhost:8000/health
+       localhost:8000/health
 
     4. Check ingress annotations:
        kubectl -n invoice-app get ingress invoice-app -o yaml

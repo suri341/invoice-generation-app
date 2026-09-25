@@ -46,7 +46,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "V-Belt A-60",
-        "category": "Belts & Pulleys",
+        "category": "Belts",
         "description": "V-belt for power transmission",
         "unit": "Piece",
         "hsn_code": "40103100",
@@ -55,7 +55,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Cast Iron Pulley 12 inch",
-        "category": "Belts & Pulleys",
+        "category": "Pulley",
         "description": "Heavy duty cast iron pulley",
         "unit": "Piece",
         "hsn_code": "84839000",
@@ -64,7 +64,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Electric Motor 5 HP",
-        "category": "Motors",
+        "category": "Motor",
         "description": "Three-phase electric motor 5 HP",
         "unit": "Piece",
         "hsn_code": "85015200",
@@ -73,7 +73,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Electric Motor 10 HP",
-        "category": "Motors",
+        "category": "Motor",
         "description": "Three-phase electric motor 10 HP",
         "unit": "Piece",
         "hsn_code": "85015200",
@@ -100,7 +100,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Wire Mesh Screen 1.5mm",
-        "category": "Screens & Sieves",
+        "category": "Sieves",
         "description": "Stainless steel wire mesh for rice sorting",
         "unit": "Square Meter",
         "hsn_code": "73144200",
@@ -109,7 +109,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Wire Mesh Screen 2mm",
-        "category": "Screens & Sieves",
+        "category": "Sieves",
         "description": "Stainless steel wire mesh for paddy sorting",
         "unit": "Square Meter",
         "hsn_code": "73144200",
@@ -154,7 +154,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Emery Stone (Cone Type)",
-        "category": "Stones & Abrasives",
+        "category": "Stones",
         "description": "Cone type emery stone for rice polishing",
         "unit": "Piece",
         "hsn_code": "68042200",
@@ -163,7 +163,7 @@ RICE_MILL_PARTS = [
     },
     {
         "name": "Emery Stone (Cylinder Type)",
-        "category": "Stones & Abrasives",
+        "category": "Stones",
         "description": "Cylinder type emery stone for polishing",
         "unit": "Piece",
         "hsn_code": "68042200",
@@ -235,8 +235,19 @@ def seed_database():
     db = SessionLocal()
 
     try:
+        category_renames = {
+            "Belts & Pulleys": "Belts",
+            "Motors": "Motor",
+            "Screens & Sieves": "Sieves",
+            "Stones & Abrasives": "Stones",
+        }
+        for part in db.query(Part).all():
+            if part.category in category_renames:
+                part.category = category_renames[part.category]
+
         existing_parts = db.query(Part).count()
         if existing_parts > 0:
+            db.commit()
             logger.info(f"Database already has {existing_parts} parts. Skipping seed.")
             return
 

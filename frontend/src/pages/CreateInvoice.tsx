@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,9 @@ import type { InvoiceItem, CreateInvoiceData } from '@/types'
 
 export default function CreateInvoice() {
   const navigate = useNavigate()
-  const [invoiceType, setInvoiceType] = useState<'invoice' | 'quotation'>('invoice')
+  const { invoiceId } = useParams<{ invoiceId: string }>()
+  const editingId = invoiceId ? Number(invoiceId) : null
+  const [invoiceType] = useState<'quotation'>('quotation')
   const [customerId, setCustomerId] = useState<number | null>(null)
   const [discountPercentage, setDiscountPercentage] = useState(0)
   const [notes, setNotes] = useState('')
@@ -33,8 +35,23 @@ export default function CreateInvoice() {
     queryFn: () => partsApi.getAll().then(res => res.data),
   })
 
+  const { data: existingInvoice } = useQuery({
+    queryKey: ['invoice', editingId],
+    queryFn: () => invoicesApi.getById(editingId as number).then(res => res.data),
+    enabled: editingId !== null,
+  })
+
+  useEffect(() => {
+    if (existingInvoice) {
+      setCustomerId(existingInvoice.customer_id)
+      setDiscountPercentage(existingInvoice.discount_percentage)
+      setNotes(existingInvoice.notes || '')
+      setItems(existingInvoice.items.map(({ amount, id, ...item }) => item))
+    }
+  }, [existingInvoice])
+
   const createMutation = useMutation({
-    mutationFn: (data: CreateInvoiceData) => invoicesApi.create(data),
+    mutationFn: (data: CreateInvoiceData) => editingId ? invoicesApi.update(editingId, data) : invoicesApi.create(data),
     onSuccess: () => {
       navigate('/invoices')
     },
@@ -104,32 +121,18 @@ export default function CreateInvoice() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold text-gray-900">Create New Invoice</h2>
-        <p className="text-gray-500 mt-1">Generate invoice or quotation for your customer</p>
+        <h2 className="text-3xl font-bold text-gray-900">{editingId ? 'Edit Quotation' : 'Create New Quotation'}</h2>
+        <p className="text-gray-500 mt-1">Prepare a quotation that can later become a separate tax invoice.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Invoice Details</CardTitle>
+                  <CardTitle>Quotation Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Invoice Type
-                  </label>
-                  <select
-                    value={invoiceType}
-                    onChange={(e) => setInvoiceType(e.target.value as 'invoice' | 'quotation')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="invoice">Invoice</option>
-                    <option value="quotation">Quotation</option>
-                  </select>
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Customer *
@@ -345,7 +348,7 @@ export default function CreateInvoice() {
                   disabled={createMutation.isPending || !customerId || items.length === 0}
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {createMutation.isPending ? 'Creating...' : 'Create Invoice'}
+                  {createMutation.isPending ? 'Saving...' : editingId ? 'Save Quotation' : 'Create Quotation'}
                 </Button>
                 <Button
                   variant="outline"

@@ -16,6 +16,7 @@ function App() {
           <Route path="/parts" element={<Parts />} />
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/invoices/create" element={<CreateInvoice />} />
+          <Route path="/invoices/:invoiceId/edit" element={<CreateInvoice />} />
         </Routes>
       </Layout>
     </Router>

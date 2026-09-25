@@ -54,18 +54,7 @@ export default function PartModal({ isOpen, onClose, onSave, part, title }: Part
 
   if (!isOpen) return null
 
-  const categories = [
-    'Shafts',
-    'Bearings',
-    'Belts & Pulleys',
-    'Motors',
-    'Rubber Rollers',
-    'Screens & Sieves',
-    'Blowers & Fans',
-    'Gears & Gear Boxes',
-    'Stones & Abrasives',
-    'Accessories',
-  ]
+  const categories = ['Rubber rolls', 'Sieves', 'Stones', 'Bearings', 'Flanges', 'Feed screw', 'Shafts', 'Aspiration hose', 'Belts', 'Pulley', 'Pneumatic system', 'Electric item', 'Motor', 'Nut bolts']
 
   const units = ['Piece', 'Kg', 'Meter', 'Square Meter', 'Set', 'Liter']
 
