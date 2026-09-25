@@ -115,7 +115,7 @@ export default function Customers() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {customers?.map((customer: Customer) => (
-                <Card key={customer.id} className="hover:shadow-lg transition-shadow">
+                <Card key={customer.id} className="border-2 border-indigo-200 hover:shadow-xl hover:border-indigo-400 transition-all bg-gradient-to-br from-white to-indigo-50">
                   <CardContent className="p-6">
                     <h3 className="font-semibold text-lg text-gray-900">{customer.name}</h3>
                     {customer.company_name && (
@@ -183,17 +183,48 @@ export default function Customers() {
       </Card>
 
       {historyCustomerId !== null && (
-        <Card>
-          <CardHeader><h3 className="text-lg font-semibold">Quotations and invoices</h3></CardHeader>
-          <CardContent>
-            <div className="space-y-2">
+        <Card className="border-2 border-blue-200 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-600" />
+                Documents for {customers?.find(c => c.id === historyCustomerId)?.name || 'Customer'}
+              </h3>
+              <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-semibold">
+                {customerDocuments?.length || 0} Document{customerDocuments?.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              All quotations and invoices for {customers?.find(c => c.id === historyCustomerId)?.company_name || customers?.find(c => c.id === historyCustomerId)?.name}
+            </p>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="space-y-3">
               {customerDocuments?.map(document => (
-                <div key={document.id} className="flex justify-between border-b py-2 text-sm">
-                  <span>{document.invoice_number} <span className="font-medium">{document.invoice_type === 'quotation' ? 'QUOTATION' : 'TAX INVOICE'}</span></span>
-                  <span className="flex items-center gap-3"><span>{formatCurrency(document.total_amount)}</span><button type="button" title={`Download ${document.invoice_number}`} aria-label={`Download ${document.invoice_number}`} onClick={async () => downloadBlob((await invoicesApi.downloadPdf(document.id)).data, `${document.invoice_number}.pdf`)} className="text-gray-600 hover:text-gray-900"><Download className="h-4 w-4" /></button></span>
+                <div key={document.id} className="flex justify-between items-center p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border-2 border-gray-200 hover:border-blue-400 transition-all">
+                  <div className="flex-1">
+                    <p className="font-bold text-gray-900">{document.invoice_number}</p>
+                    <span className={`inline-block mt-1 text-xs font-semibold px-3 py-1 rounded-full ${document.invoice_type === 'quotation' ? 'bg-amber-200 text-amber-800 border border-amber-300' : 'bg-purple-200 text-purple-800 border border-purple-300'}`}>
+                      {document.invoice_type === 'quotation' ? 'QUOTATION' : 'TAX INVOICE'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-bold text-lg text-gray-900">{formatCurrency(document.total_amount)}</span>
+                    <button
+                      type="button"
+                      title={`Download ${document.invoice_number}`}
+                      aria-label={`Download ${document.invoice_number}`}
+                      onClick={async () => downloadBlob((await invoicesApi.downloadPdf(document.id)).data, `${document.invoice_number}.pdf`)}
+                      className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    >
+                      <Download className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               ))}
-              {customerDocuments?.length === 0 && <p className="text-gray-500">No quotations or invoices found.</p>}
+              {customerDocuments?.length === 0 && (
+                <p className="text-gray-500 text-center py-8">No quotations or invoices found for this customer.</p>
+              )}
             </div>
           </CardContent>
         </Card>

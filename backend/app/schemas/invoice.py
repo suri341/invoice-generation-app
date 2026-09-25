@@ -8,6 +8,7 @@ class InvoiceItemCreate(BaseModel):
     part_id: Optional[int] = None
     part_name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
+    hsn_code: Optional[str] = Field(None, max_length=20)
     quantity: float = Field(..., gt=0)
     unit: str = Field(default="Piece", max_length=20)
     unit_price: float = Field(..., gt=0)
@@ -18,6 +19,7 @@ class InvoiceItemResponse(BaseModel):
     part_id: Optional[int]
     part_name: str
     description: Optional[str]
+    hsn_code: Optional[str]
     quantity: float
     unit: str
     unit_price: float

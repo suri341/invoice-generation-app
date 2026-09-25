@@ -31,6 +31,7 @@ export interface InvoiceItem {
   part_id?: number
   part_name: string
   description?: string
+  hsn_code?: string
   quantity: number
   unit: string
   unit_price: number

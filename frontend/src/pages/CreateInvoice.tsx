@@ -20,6 +20,7 @@ export default function CreateInvoice() {
   const [items, setItems] = useState<Omit<InvoiceItem, 'id' | 'amount'>[]>([{
     part_name: '',
     description: '',
+    hsn_code: '',
     quantity: 1,
     unit: 'Piece',
     unit_price: 0,
@@ -61,6 +62,7 @@ export default function CreateInvoice() {
     setItems([...items, {
       part_name: '',
       description: '',
+      hsn_code: '',
       quantity: 1,
       unit: 'Piece',
       unit_price: 0,
@@ -83,6 +85,7 @@ export default function CreateInvoice() {
       updateItem(index, 'part_id', part.id)
       updateItem(index, 'part_name', part.name)
       updateItem(index, 'description', part.description || '')
+      updateItem(index, 'hsn_code', part.hsn_code || '')
       updateItem(index, 'unit', part.unit)
       updateItem(index, 'unit_price', part.price)
     }

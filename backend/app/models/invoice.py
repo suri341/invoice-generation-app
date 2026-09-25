@@ -60,6 +60,7 @@ class InvoiceItem(Base):
 
     part_name = Column(String(255), nullable=False)
     description = Column(Text)
+    hsn_code = Column(String(20))
     quantity = Column(Float, nullable=False)
     unit = Column(String(20), default="Piece")
     unit_price = Column(Float, nullable=False)
@@ -68,6 +69,7 @@ class InvoiceItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     invoice = relationship("Invoice", back_populates="items")
+    part = relationship("Part")
 
     def __repr__(self):
         return f"<InvoiceItem {self.part_name} x {self.quantity}>"
