@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
-import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 export default function Dashboard() {
@@ -14,29 +14,48 @@ export default function Dashboard() {
   const [startDate, setStartDate] = useState(tempStartDate)
   const [endDate, setEndDate] = useState(tempEndDate)
   const [showRevenue, setShowRevenue] = useState(false)
-  const [customDays, setCustomDays] = useState('')
+  const [selectedRange, setSelectedRange] = useState('1d')
+  const [showCustom, setShowCustom] = useState(false)
   const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(endDate).toISOString() }
 
-  const setQuickRange = (range: string | number) => {
+  const timeRanges = [
+    { value: '5m', label: 'Last 5 minutes', minutes: 5 },
+    { value: '15m', label: 'Last 15 minutes', minutes: 15 },
+    { value: '30m', label: 'Last 30 minutes', minutes: 30 },
+    { value: '1h', label: 'Last 1 hour', hours: 1 },
+    { value: '3h', label: 'Last 3 hours', hours: 3 },
+    { value: '6h', label: 'Last 6 hours', hours: 6 },
+    { value: '12h', label: 'Last 12 hours', hours: 12 },
+    { value: '1d', label: 'Last 1 day', days: 1 },
+    { value: '3d', label: 'Last 3 days', days: 3 },
+    { value: '1w', label: 'Last 1 week', days: 7 },
+    { value: '1M', label: 'Last 1 month', days: 30 },
+    { value: '3M', label: 'Last 3 months', days: 90 },
+    { value: 'custom', label: 'Custom' },
+  ]
+
+  const setQuickRange = (range: string) => {
     const end = new Date()
-    end.setHours(23, 59, 59, 999)
     const start = new Date(end)
 
-    if (range === 'today') {
-      start.setHours(0, 0, 0, 0)
-    } else if (range === 'month') {
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
-    } else if (range === 'year') {
-      start.setMonth(0, 1)
-      start.setHours(0, 0, 0, 0)
-    } else if (typeof range === 'number') {
-      start.setDate(start.getDate() - range)
-      start.setHours(0, 0, 0, 0)
+    const rangeConfig = timeRanges.find(r => r.value === range)
+    if (!rangeConfig || range === 'custom') {
+      setShowCustom(true)
+      return
+    }
+
+    if (rangeConfig.minutes) {
+      start.setMinutes(start.getMinutes() - rangeConfig.minutes)
+    } else if (rangeConfig.hours) {
+      start.setHours(start.getHours() - rangeConfig.hours)
+    } else if (rangeConfig.days) {
+      start.setDate(start.getDate() - rangeConfig.days)
     }
 
     setTempStartDate(start.toISOString().slice(0, 16))
     setTempEndDate(end.toISOString().slice(0, 16))
+    setSelectedRange(range)
+    setShowCustom(false)
   }
 
   const applyFilters = () => {
@@ -157,64 +176,47 @@ export default function Dashboard() {
         })}
       </div>
 
-      <Card className="border border-blue-200">
-        <CardContent className="p-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-wrap gap-1">
-              {[['today', 'Today'], [7, '7d'], [30, '30d'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setQuickRange(value as any)}
-                  className="px-2 py-1 text-xs font-medium border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
-                >
-                  {label}
-                </button>
-              ))}
-              <div className="flex gap-1 items-center">
-                <Input
-                  type="number"
-                  placeholder="#"
-                  value={customDays}
-                  onChange={(e) => setCustomDays(e.target.value)}
-                  className="w-12 h-7 text-xs px-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const days = parseInt(customDays)
-                    if (days > 0) setQuickRange(days)
-                  }}
-                  className="px-2 py-1 text-xs font-medium border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
-                >
-                  days
-                </button>
-              </div>
+      <Card className="border border-gray-300 bg-gray-50">
+        <CardContent className="p-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <select
+                value={selectedRange}
+                onChange={(e) => setQuickRange(e.target.value)}
+                className="h-8 pl-3 pr-8 text-sm border border-gray-300 rounded-md bg-white appearance-none cursor-pointer hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {timeRanges.map(range => (
+                  <option key={range.value} value={range.value}>{range.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             </div>
 
-            <input
-              aria-label="Start"
-              type="datetime-local"
-              value={tempStartDate}
-              onChange={(e) => setTempStartDate(e.target.value)}
-              className="w-44 h-7 px-2 text-xs border border-gray-300 rounded"
-            />
+            {showCustom && (
+              <>
+                <input
+                  type="datetime-local"
+                  value={tempStartDate}
+                  onChange={(e) => setTempStartDate(e.target.value)}
+                  className="h-8 px-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-500">to</span>
+                <input
+                  type="datetime-local"
+                  value={tempEndDate}
+                  onChange={(e) => setTempEndDate(e.target.value)}
+                  className="h-8 px-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </>
+            )}
 
-            <input
-              aria-label="End"
-              type="datetime-local"
-              value={tempEndDate}
-              onChange={(e) => setTempEndDate(e.target.value)}
-              className="w-44 h-7 px-2 text-xs border border-gray-300 rounded"
-            />
-
-            <Button onClick={applyFilters} size="sm" className="h-7 bg-blue-600 hover:bg-blue-700">
+            <Button onClick={applyFilters} size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 px-4">
               Apply
             </Button>
-            <Button onClick={resetFilters} size="sm" variant="outline" className="h-7">
+            <Button onClick={resetFilters} size="sm" variant="outline" className="h-8 px-3">
               <RefreshCw className="h-3 w-3" />
             </Button>
-            <span className="text-[10px] text-gray-500 ml-auto">IST</span>
+            <span className="text-xs text-gray-500 ml-auto">IST Timezone</span>
           </div>
         </CardContent>
       </Card>
