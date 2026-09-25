@@ -7,17 +7,20 @@ import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDo
 import { formatCurrency } from '@/lib/utils'
 
 export default function Dashboard() {
-  const now = new Date()
-  const [tempStartDate, setTempStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 16))
-  const [tempEndDate, setTempEndDate] = useState(new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16))
-  const [startDate, setStartDate] = useState(tempStartDate)
-  const [endDate, setEndDate] = useState(tempEndDate)
+  // Initialize with "None" filter to show all data by default
+  const veryOldDate = new Date('2020-01-01').toISOString().slice(0, 16)
+  const farFutureDate = new Date('2099-12-31').toISOString().slice(0, 16)
+  const [tempStartDate, setTempStartDate] = useState(veryOldDate)
+  const [tempEndDate, setTempEndDate] = useState(farFutureDate)
+  const [startDate, setStartDate] = useState(veryOldDate)
+  const [endDate, setEndDate] = useState(farFutureDate)
   const [showRevenue, setShowRevenue] = useState(false)
-  const [selectedRange, setSelectedRange] = useState('1d')
+  const [selectedRange, setSelectedRange] = useState('none')
   const [showCustom, setShowCustom] = useState(false)
   const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(endDate).toISOString() }
 
   const timeRanges = [
+    { value: 'none', label: 'None' },
     { value: '5m', label: 'Last 5 minutes', minutes: 5 },
     { value: '15m', label: 'Last 15 minutes', minutes: 15 },
     { value: '30m', label: 'Last 30 minutes', minutes: 30 },
@@ -34,14 +37,33 @@ export default function Dashboard() {
   ]
 
   const setQuickRange = (range: string) => {
-    const end = new Date()
-    const start = new Date(end)
-
     const rangeConfig = timeRanges.find(r => r.value === range)
-    if (!rangeConfig || range === 'custom') {
-      setShowCustom(true)
+
+    // Handle "None" - show all data
+    if (range === 'none') {
+      const veryOldDate = new Date('2020-01-01')
+      const farFutureDate = new Date('2099-12-31')
+      const startStr = veryOldDate.toISOString().slice(0, 16)
+      const endStr = farFutureDate.toISOString().slice(0, 16)
+      setTempStartDate(startStr)
+      setTempEndDate(endStr)
+      setStartDate(startStr)
+      setEndDate(endStr)
+      setSelectedRange(range)
+      setShowCustom(false)
       return
     }
+
+    // Handle "Custom"
+    if (!rangeConfig || range === 'custom') {
+      setShowCustom(true)
+      setSelectedRange(range)
+      return
+    }
+
+    // Calculate time range
+    const end = new Date()
+    const start = new Date(end)
 
     if (rangeConfig.minutes) {
       start.setMinutes(start.getMinutes() - rangeConfig.minutes)
@@ -49,10 +71,18 @@ export default function Dashboard() {
       start.setHours(start.getHours() - rangeConfig.hours)
     } else if (rangeConfig.days) {
       start.setDate(start.getDate() - rangeConfig.days)
+      start.setHours(0, 0, 0, 0) // Start of day
+      end.setHours(23, 59, 59, 999) // End of current day
     }
 
-    setTempStartDate(start.toISOString().slice(0, 16))
-    setTempEndDate(end.toISOString().slice(0, 16))
+    const startStr = start.toISOString().slice(0, 16)
+    const endStr = end.toISOString().slice(0, 16)
+
+    // Immediately apply filters like AWS CloudWatch (no need to click Apply)
+    setTempStartDate(startStr)
+    setTempEndDate(endStr)
+    setStartDate(startStr)
+    setEndDate(endStr)
     setSelectedRange(range)
     setShowCustom(false)
   }
@@ -63,13 +93,15 @@ export default function Dashboard() {
   }
 
   const resetFilters = () => {
-    const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0, 16)
-    const end = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
-    setTempStartDate(start)
-    setTempEndDate(end)
-    setStartDate(start)
-    setEndDate(end)
+    // Reset to "None" filter (show all data)
+    const veryOldDate = new Date('2020-01-01').toISOString().slice(0, 16)
+    const farFutureDate = new Date('2099-12-31').toISOString().slice(0, 16)
+    setTempStartDate(veryOldDate)
+    setTempEndDate(farFutureDate)
+    setStartDate(veryOldDate)
+    setEndDate(farFutureDate)
+    setSelectedRange('none')
+    setShowCustom(false)
   }
   const { data: customers } = useQuery({
     queryKey: ['customers'],

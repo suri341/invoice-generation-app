@@ -176,12 +176,9 @@ class InvoiceService:
         return invoice
 
     def get_default_terms(self) -> str:
-        return """Terms and Conditions:
-1. Payment is due within 30 days of invoice date.
-2. All prices are in Indian Rupees (INR).
-3. Goods once sold will not be taken back.
-4. Delivery charges, if any, will be extra.
-5. Subject to local jurisdiction only.
-6. Payment by cheque subject to realization.
-
-Thank you for your business!"""
+        """Default terms matching reference invoice.pdf exactly"""
+        return """E. & O.E
+1. Goods once sold will not be taken back or exchanged.
+2. Interest 18& p.a. will be charged if the payment
+   is not made with in the stipulated time
+3. Subject to "TOHANA" Jurisdiction only."""

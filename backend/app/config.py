@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     COMPANY_NAME: str = "Jagannath Enterprises"
     OWNER_NAME: str = "K. Krishna"
     PHONE_NUMBER: str = "8919575870"
-    COMPANY_ADDRESS: str = "Rice Mill Parts Supplier"
-    GSTIN: str = ""  # Add GST number if available
+    COMPANY_ADDRESS: str = "S-139, Sankhavaram Mandal, Kathipudi"
+    COMPANY_CITY: str = "Kakinada, Andhra Pradesh - 533444"
+    GSTIN: str = "37HEAPK8573K1ZU"
 
     # Tax Configuration
     CGST_RATE: float = 9.0  # Central GST

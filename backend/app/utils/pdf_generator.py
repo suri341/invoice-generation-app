@@ -83,9 +83,11 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     def p(text, style=normal):
         return Paragraph(escape(str(text)).replace("\n", "<br/>"), style)
 
+    # Company header matching reference invoice.pdf exactly
     company_lines = [
         p(str(settings.COMPANY_NAME).upper(), ParagraphStyle("Company", parent=normal, fontSize=18, leading=21, fontName="Helvetica-Bold", textColor=navy, alignment=TA_CENTER)),
         p(settings.COMPANY_ADDRESS, ParagraphStyle("CompanyAddress", parent=normal, alignment=TA_CENTER)),
+        p(getattr(settings, 'COMPANY_CITY', ''), ParagraphStyle("CompanyCity", parent=normal, alignment=TA_CENTER)),
     ]
     if settings.GSTIN:
         company_lines.append(p(f"GSTIN : {settings.GSTIN}", ParagraphStyle("CompanyGstin", parent=normal, alignment=TA_CENTER, fontName="Helvetica-Bold")))
@@ -109,48 +111,43 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     number_label = "Quotation No." if is_quotation else "Invoice No."
 
     customer = invoice.customer
-    customer_state = customer.state or ""
+    customer_state = customer.state or "Andhra Pradesh"
 
-    # Build left side - Party Details
-    left_lines = [customer.name]
-    if customer.company_name:
-        left_lines.append(customer.company_name)
-    if customer.address:
-        left_lines.append(customer.address)
-    if customer.city:
-        city_line = customer.city
-        if customer.state:
-            city_line += f", {customer.state}"
-        if customer.pincode:
-            city_line += f" - {customer.pincode}"
-        left_lines.append(city_line)
+    # Build customer info lines for left column
+    customer_line1 = f"M/s. {customer.name}" if not customer.company_name else f"M/s. {customer.company_name}"
+    customer_line2 = customer.address if customer.address else ""
 
-    # Build Party Details table matching reference invoice.pdf exactly
+    # Build Party Details table matching reference invoice.pdf EXACTLY
     meta_data = [
-        # Row 1: Header row - "Party Details" | "Invoice/Quotation No. : value"
-        [p("Party Details", section), "", p(number_label, label), p(": " + invoice.invoice_number, normal)],
-        # Row 2: Customer name/company | "Dated : date"
-        [p("\n".join(left_lines), normal), "", p("Dated", label), p(": " + _date(invoice.invoice_date), normal)],
-        # Row 3: Empty | "Place of Supply : state"
-        [p("", small), "", p("Place of Supply", label), p(": " + customer_state, normal)],
+        # Row 1: "Party Details" header | "Invoice/Quotation No. : value"
+        [p("Party Details", section), "", p(number_label, label), p(f": {invoice.invoice_number}", normal)],
+        # Row 2: Customer name/company (M/s. format) | "Dated : date"
+        [p(customer_line1, normal), "", p("Dated", label), p(f": {_date(invoice.invoice_date)}", normal)],
+        # Row 3: Customer address | "Place of Supply : state"
+        [p(customer_line2, normal), "", p("Place of Supply", label), p(f": {customer_state}", normal)],
     ]
 
     if not is_quotation:
-        # Tax Invoice format - additional rows matching reference invoice.pdf
-        # Row 4: "Party Mobile No" | "Transport :"
-        meta_data.append([p("Party Mobile No", small), "", p("Transport", label), p(":", normal)])
-        # Row 5: "GSTIN    [value]" | "Vehicle No. :"
+        # Tax Invoice format - additional rows matching reference invoice.pdf EXACTLY
+        # Row 4: Empty | "Transport :"
+        meta_data.append([p("", small), "", p("Transport", label), p(":", normal)])
+        # Row 5: "Party Mobile No" | "Vehicle No. :"
+        meta_data.append([p("Party Mobile No", small), "", p("Vehicle No.", label), p(":", normal)])
+        # Row 6: "GSTIN    [value]" | "Station :"
         gstin_value = customer.gstin if customer.gstin else ""
-        meta_data.append([p(f"GSTIN    {gstin_value}", small), "", p("Vehicle No.", label), p(":", normal)])
-        # Row 6: "Nos      [phone]" | "Station :"
-        meta_data.append([p(f"Nos      {customer.phone}", small), "", p("Station", label), p(":", normal)])
-        # Row 7: Empty | "E-Way Bill No. :"
-        meta_data.append([p("", small), "", p("E-Way Bill No.", label), p(":", normal)])
-        # Row 8: Empty | "Quotation No." (just label, no value or colon)
-        meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
+        meta_data.append([p(f"GSTIN    {gstin_value}", small), "", p("Station", label), p(":", normal)])
+        # Row 7: "Nos      [phone]" | "E-Way Bill No. : [value]"
+        eway_value = ""  # Can be added to model later
+        meta_data.append([p(f"Nos      {customer.phone}", small), "", p("E-Way Bill No.", label), p(f": {eway_value}", normal)])
+        # Row 8: Empty | "Quotation No." or "Quotation No. [value]" if converted
+        if invoice.source_quotation:
+            meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
+        else:
+            # No source quotation - show just empty "Quotation No." label
+            meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
     else:
-        # Quotation format - simple, NO GSTIN in body
-        meta_data.append([p("Party Mobile No: " + customer.phone, small), "", p("", normal), p("", normal)])
+        # Quotation format - simple, NO GSTIN in body, just show mobile
+        meta_data.append([p(f"Party Mobile No: {customer.phone}", small), "", p("", normal), p("", normal)])
 
     elements.append(Table(meta_data, colWidths=[3.7 * inch, 0.1 * inch, 1.8 * inch, 1.85 * inch], style=TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
@@ -220,14 +217,16 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     if not bank_details:
         bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
 
-    # Terms & Conditions matching reference invoice.pdf
+    # Terms & Conditions matching reference invoice.pdf EXACTLY
+    # For tax invoices, always use the standard terms from reference
     default_terms = """E. & O.E
 1. Goods once sold will not be taken back or exchanged.
 2. Interest 18& p.a. will be charged if the payment
    is not made with in the stipulated time
 3. Subject to "TOHANA" Jurisdiction only."""
 
-    terms = invoice.terms_conditions or default_terms
+    # Always use default terms for consistency with reference invoice.pdf
+    terms = default_terms if not is_quotation else (invoice.terms_conditions or default_terms)
 
     lower = Table([
         [p("Bank Details :", label), p("Terms & Conditions", label)],

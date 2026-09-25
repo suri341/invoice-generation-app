@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { invoicesApi } from '@/lib/api'
-import { Plus, Search, Download, Eye, Trash2, Pencil, ArrowRight, RefreshCw } from 'lucide-react'
+import { Search, Download, Eye, Trash2, Pencil, ArrowRight, RefreshCw } from 'lucide-react'
 import { formatCurrency, formatDate, downloadBlob } from '@/lib/utils'
 import type { Invoice } from '@/types'
 
@@ -122,12 +121,6 @@ export default function Invoices() {
           <h2 className="text-3xl font-bold text-gray-900">Invoices & Quotations</h2>
           <p className="text-gray-500 mt-1">Manage your invoices and quotations</p>
         </div>
-        <Link to="/invoices/create">
-          <Button className="flex items-center space-x-2">
-            <Plus className="h-4 w-4" />
-            <span>Create Quotation</span>
-          </Button>
-        </Link>
       </div>
 
       <Card className="border border-indigo-200">
