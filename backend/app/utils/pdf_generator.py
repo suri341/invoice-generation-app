@@ -64,11 +64,15 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     pale = colors.HexColor("#F2F6F7")
     dark = colors.HexColor("#263746")
     is_quotation = invoice.invoice_type.value == "quotation"
-    currency = "Rs." if is_quotation else "₹"
 
     def money(value: float, negative: bool = False) -> str:
+        """Format money - quotations use 'Rs. amount', tax invoices use plain 'amount'"""
         sign = "-" if negative else ""
-        return f"{sign}{currency} {abs(value):,.2f}" if is_quotation else f"{sign}{currency}{abs(value):,.2f}"
+        if is_quotation:
+            return f"{sign}Rs. {abs(value):,.2f}"
+        else:
+            # Tax invoice - no currency symbol, just plain number with commas
+            return f"{sign}{abs(value):,.2f}"
 
     normal = ParagraphStyle("InvoiceNormal", parent=styles["Normal"], fontSize=8.5, leading=11, textColor=dark)
     small = ParagraphStyle("InvoiceSmall", parent=normal, fontSize=7.5, leading=9)
@@ -121,27 +125,31 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
             city_line += f" - {customer.pincode}"
         left_lines.append(city_line)
 
+    # Build Party Details table matching reference invoice.pdf exactly
     meta_data = [
+        # Row 1: Header row - "Party Details" | "Invoice/Quotation No. : value"
         [p("Party Details", section), "", p(number_label, label), p(": " + invoice.invoice_number, normal)],
+        # Row 2: Customer name/company | "Dated : date"
         [p("\n".join(left_lines), normal), "", p("Dated", label), p(": " + _date(invoice.invoice_date), normal)],
+        # Row 3: Empty | "Place of Supply : state"
         [p("", small), "", p("Place of Supply", label), p(": " + customer_state, normal)],
     ]
 
     if not is_quotation:
-        # Tax Invoice - add all fields matching reference invoice.pdf
+        # Tax Invoice format - additional rows matching reference invoice.pdf
+        # Row 4: "Party Mobile No" | "Transport :"
         meta_data.append([p("Party Mobile No", small), "", p("Transport", label), p(":", normal)])
-        gstin_text = "GSTIN    " + (customer.gstin if customer.gstin else "")
-        meta_data.append([p(gstin_text, small), "", p("Vehicle No.", label), p(":", normal)])
-        nos_text = "Nos      " + customer.phone
-        meta_data.append([p(nos_text, small), "", p("Station", label), p(":", normal)])
+        # Row 5: "GSTIN    [value]" | "Vehicle No. :"
+        gstin_value = customer.gstin if customer.gstin else ""
+        meta_data.append([p(f"GSTIN    {gstin_value}", small), "", p("Vehicle No.", label), p(":", normal)])
+        # Row 6: "Nos      [phone]" | "Station :"
+        meta_data.append([p(f"Nos      {customer.phone}", small), "", p("Station", label), p(":", normal)])
+        # Row 7: Empty | "E-Way Bill No. :"
         meta_data.append([p("", small), "", p("E-Way Bill No.", label), p(":", normal)])
-        # Add Quotation No. line for invoices
-        if invoice.source_quotation:
-            meta_data.append([p("", small), "", p("Quotation No.", label), p(invoice.source_quotation.invoice_number, normal)])
-        else:
-            meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
+        # Row 8: Empty | "Quotation No." (just label, no value or colon)
+        meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
     else:
-        # Quotation - simple format, NO GSTIN
+        # Quotation format - simple, NO GSTIN in body
         meta_data.append([p("Party Mobile No: " + customer.phone, small), "", p("", normal), p("", normal)])
 
     elements.append(Table(meta_data, colWidths=[3.7 * inch, 0.1 * inch, 1.8 * inch, 1.85 * inch], style=TableStyle([
