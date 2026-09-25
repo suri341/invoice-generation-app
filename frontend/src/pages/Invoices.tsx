@@ -130,246 +130,238 @@ export default function Invoices() {
         </Link>
       </div>
 
-      <Card className="border-2 border-indigo-200 shadow-md">
-        <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Filter className="h-5 w-5 text-indigo-600" />
-              Filter Documents
-            </CardTitle>
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              IST Timezone
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">SEARCH</label>
+      <Card className="border border-indigo-200">
+        <CardContent className="p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[150px]">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
                 <Input
-                  placeholder="Search invoices..."
+                  placeholder="Search..."
                   value={tempSearch}
                   onChange={(e) => setTempSearch(e.target.value)}
-                  className="pl-10 border-2 border-gray-300 focus:border-indigo-500"
+                  className="pl-7 h-8 text-sm"
                 />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">CUSTOMER</label>
-              <Input
-                placeholder="Filter by customer"
-                value={tempCustomerFilter}
-                onChange={(e) => setTempCustomerFilter(e.target.value)}
-                className="border-2 border-gray-300 focus:border-indigo-500"
-              />
-            </div>
+            <Input
+              placeholder="Customer"
+              value={tempCustomerFilter}
+              onChange={(e) => setTempCustomerFilter(e.target.value)}
+              className="w-32 h-8 text-sm"
+            />
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">DOCUMENT TYPE</label>
-              <select
-                aria-label="Filter by type"
-                value={tempTypeFilter}
-                onChange={(e) => setTempTypeFilter(e.target.value)}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-md focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-              >
-                <option value="">All types</option>
-                <option value="quotation">Quotation</option>
-                <option value="invoice">Tax invoice</option>
-              </select>
-            </div>
+            <select
+              aria-label="Type"
+              value={tempTypeFilter}
+              onChange={(e) => setTempTypeFilter(e.target.value)}
+              className="w-32 h-8 px-2 text-sm border border-gray-300 rounded-md"
+            >
+              <option value="">All types</option>
+              <option value="quotation">Quotation</option>
+              <option value="invoice">Invoice</option>
+            </select>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">FROM DATE</label>
-              <Input
-                aria-label="Filter from date"
-                type="date"
-                value={tempDateFrom}
-                onChange={(e) => setTempDateFrom(e.target.value)}
-                className="border-2 border-gray-300 focus:border-indigo-500"
-              />
-            </div>
+            <Input
+              aria-label="From date"
+              type="date"
+              value={tempDateFrom}
+              onChange={(e) => setTempDateFrom(e.target.value)}
+              className="w-36 h-8 text-sm"
+            />
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">TO DATE</label>
-              <Input
-                aria-label="Filter to date"
-                type="date"
-                value={tempDateTo}
-                onChange={(e) => setTempDateTo(e.target.value)}
-                className="border-2 border-gray-300 focus:border-indigo-500"
-              />
-            </div>
+            <Input
+              aria-label="To date"
+              type="date"
+              value={tempDateTo}
+              onChange={(e) => setTempDateTo(e.target.value)}
+              className="w-36 h-8 text-sm"
+            />
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">AMOUNT RANGE</label>
-              <div className="flex gap-2">
-                <Input
-                  aria-label="Minimum amount"
-                  type="number"
-                  min="0"
-                  placeholder="Min"
-                  value={tempAmountMin}
-                  onChange={(e) => setTempAmountMin(e.target.value)}
-                  className="border-2 border-gray-300 focus:border-indigo-500"
-                />
-                <Input
-                  aria-label="Maximum amount"
-                  type="number"
-                  min="0"
-                  placeholder="Max"
-                  value={tempAmountMax}
-                  onChange={(e) => setTempAmountMax(e.target.value)}
-                  className="border-2 border-gray-300 focus:border-indigo-500"
-                />
-              </div>
-            </div>
-          </div>
+            <Input
+              aria-label="Min amount"
+              type="number"
+              placeholder="Min"
+              value={tempAmountMin}
+              onChange={(e) => setTempAmountMin(e.target.value)}
+              className="w-24 h-8 text-sm"
+            />
 
-          <div className="flex gap-2 pt-2">
-            <Button onClick={applyFilters} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium">
-              Apply Filters
+            <Input
+              aria-label="Max amount"
+              type="number"
+              placeholder="Max"
+              value={tempAmountMax}
+              onChange={(e) => setTempAmountMax(e.target.value)}
+              className="w-24 h-8 text-sm"
+            />
+
+            <Button onClick={applyFilters} size="sm" className="h-8 bg-indigo-600 hover:bg-indigo-700">
+              Apply
             </Button>
-            <Button onClick={resetFilters} variant="outline" className="border-2 border-gray-300 hover:bg-gray-50">
-              <RefreshCw className="h-4 w-4" />
+            <Button onClick={resetFilters} size="sm" variant="outline" className="h-8">
+              <RefreshCw className="h-3 w-3" />
             </Button>
           </div>
         </CardContent>
         </Card>
 
-      <Card className="border-2 border-purple-200 shadow-md">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
-          <CardTitle className="text-gray-800 flex items-center gap-2">
-            <Network className="h-5 w-5 text-purple-600" />
-            Quotation to Invoice Flow
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          {filteredInvoices.filter(inv => inv.invoice_type === 'quotation' && quotationInvoiceMap.has(inv.id)).length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No quotation-to-invoice conversions found</p>
-          ) : (
-            <div className="space-y-4">
-              {filteredInvoices
-                .filter(inv => inv.invoice_type === 'quotation' && quotationInvoiceMap.has(inv.id))
-                .map(quotation => (
-                  <div key={quotation.id} className="p-4 bg-gradient-to-r from-amber-50 to-purple-50 rounded-lg border-2 border-amber-300">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-amber-200 text-amber-800 px-3 py-2 rounded-lg font-bold border-2 border-amber-400">
-                        {quotation.invoice_number}
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-gray-600" />
-                      <div className="flex flex-wrap gap-2">
-                        {quotationInvoiceMap.get(quotation.id)?.map(invoice => (
-                          <div key={invoice.id} className="bg-purple-200 text-purple-800 px-3 py-2 rounded-lg font-bold border-2 border-purple-400">
-                            {invoice.invoice_number}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      <Card className="border-2 border-blue-200 shadow-md">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50">
-          <CardTitle className="text-gray-800">All Documents</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="border border-gray-200">
+        <CardContent className="p-0">
           {invoices && invoices.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">No invoices found</p>
+              <p className="text-gray-500 mb-4">No documents found</p>
               <Link to="/invoices/create">
-                <Button>Create Your First Invoice</Button>
+                <Button>Create Your First Quotation</Button>
               </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Document #</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Customer</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Type</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Amount</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left py-2 px-3 font-semibold text-gray-700">Document #</th>
+                    <th className="text-left py-2 px-3 font-semibold text-gray-700">Customer</th>
+                    <th className="text-left py-2 px-3 font-semibold text-gray-700">Type</th>
+                    <th className="text-left py-2 px-3 font-semibold text-gray-700">Date</th>
+                    <th className="text-right py-2 px-3 font-semibold text-gray-700">Amount</th>
+                    <th className="text-right py-2 px-3 font-semibold text-gray-700">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.map((invoice: Invoice, index: number) => (
-                    <tr id={`invoice-${invoice.id}`} key={invoice.id} className={`border-b-2 border-gray-200 transition-all ${index % 2 === 0 ? 'bg-gradient-to-r from-blue-50/30 to-purple-50/30' : 'bg-white'} hover:bg-gradient-to-r hover:from-indigo-100/50 hover:to-purple-100/50`}>
-                      <td className="py-3 px-4 font-medium text-gray-900">
-                        {invoice.invoice_number}
-                        {invoice.source_quotation && <Link to={`/invoices#invoice-${invoice.source_quotation.id}`} className="block text-xs text-blue-600 hover:underline">From {invoice.source_quotation.invoice_number}</Link>}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="font-medium text-gray-900">{invoice.customer.name}</p>
-                          {invoice.customer.company_name && (
-                            <p className="text-sm text-gray-500">{invoice.customer.company_name}</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          invoice.invoice_type === 'invoice'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {invoice.invoice_type === 'quotation' ? 'QUOTATION' : 'TAX INVOICE'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-gray-600">
-                        {formatDate(invoice.invoice_date)}
-                      </td>
-                      <td className="py-3 px-4 text-right font-semibold text-gray-900">
-                        {formatCurrency(invoice.total_amount)}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex justify-end space-x-2">
-                          <Button size="sm" variant="outline" title={`View ${invoice.invoice_number}`} aria-label={`View ${invoice.invoice_number}`} onClick={() => handlePreview(invoice)} className="hover:bg-blue-50 hover:border-blue-400">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => downloadMutation.mutate(invoice.id)}
-                            disabled={downloadMutation.isPending}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          {invoice.invoice_type === 'quotation' && (
-                            <>
-                              <Link to={`/invoices/${invoice.id}/edit`}>
-                                <Button size="sm" variant="outline" title="Edit quotation"><Pencil className="h-4 w-4" /></Button>
-                              </Link>
-                              <Button size="sm" variant="outline" title="Convert quotation to tax invoice" onClick={() => convertMutation.mutate(invoice.id)} disabled={convertMutation.isPending}>
-                                <ArrowRight className="h-4 w-4" />
+                  {filteredInvoices.filter(inv => inv.invoice_type === 'quotation').map((quotation: Invoice) => {
+                    const convertedInvoices = quotationInvoiceMap.get(quotation.id) || []
+                    return (
+                      <>
+                        <tr key={quotation.id} id={`invoice-${quotation.id}`} className="border-b border-gray-100 hover:bg-amber-50">
+                          <td className="py-2 px-3 font-medium text-gray-900">
+                            {quotation.invoice_number}
+                          </td>
+                          <td className="py-2 px-3">
+                            <p className="font-medium text-gray-900">{quotation.customer.name}</p>
+                            {quotation.customer.company_name && (
+                              <p className="text-xs text-gray-500">{quotation.customer.company_name}</p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 font-semibold">
+                              QUOTATION
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-gray-600">
+                            {formatDate(quotation.invoice_date)}
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-gray-900">
+                            {formatCurrency(quotation.total_amount)}
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <div className="flex justify-end space-x-1">
+                              <Button size="sm" variant="outline" title="View" onClick={() => handlePreview(quotation)} className="h-7 w-7 p-0">
+                                <Eye className="h-3 w-3" />
                               </Button>
-                            </>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              if (window.confirm('Are you sure you want to delete this invoice?')) {
-                                deleteMutation.mutate(invoice.id)
-                              }
-                            }}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                title="Download"
+                                onClick={() => downloadMutation.mutate(quotation.id)}
+                                disabled={downloadMutation.isPending}
+                                className="h-7 w-7 p-0"
+                              >
+                                <Download className="h-3 w-3" />
+                              </Button>
+                              <Link to={`/invoices/${quotation.id}/edit`}>
+                                <Button size="sm" variant="outline" title="Edit" className="h-7 w-7 p-0">
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              </Link>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                title="Convert to invoice"
+                                onClick={() => convertMutation.mutate(quotation.id)}
+                                disabled={convertMutation.isPending}
+                                className="h-7 w-7 p-0"
+                              >
+                                <ArrowRight className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                title="Delete"
+                                onClick={() => {
+                                  if (window.confirm('Are you sure you want to delete this quotation?')) {
+                                    deleteMutation.mutate(quotation.id)
+                                  }
+                                }}
+                                disabled={deleteMutation.isPending}
+                                className="h-7 w-7 p-0"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                        {convertedInvoices.map((invoice: Invoice) => (
+                          <tr key={invoice.id} id={`invoice-${invoice.id}`} className="border-b border-gray-100 hover:bg-purple-50 bg-purple-50/30">
+                            <td className="py-2 px-3 pl-8 font-medium text-gray-700">
+                              <span className="mr-2 text-gray-400">└─</span>
+                              {invoice.invoice_number}
+                            </td>
+                            <td className="py-2 px-3">
+                              <p className="font-medium text-gray-900">{invoice.customer.name}</p>
+                              {invoice.customer.company_name && (
+                                <p className="text-xs text-gray-500">{invoice.customer.company_name}</p>
+                              )}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">
+                                TAX INVOICE
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-600">
+                              {formatDate(invoice.invoice_date)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-semibold text-gray-900">
+                              {formatCurrency(invoice.total_amount)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <div className="flex justify-end space-x-1">
+                                <Button size="sm" variant="outline" title="View" onClick={() => handlePreview(invoice)} className="h-7 w-7 p-0">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  title="Download"
+                                  onClick={() => downloadMutation.mutate(invoice.id)}
+                                  disabled={downloadMutation.isPending}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Download className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  title="Delete"
+                                  onClick={() => {
+                                    if (window.confirm('Are you sure you want to delete this invoice?')) {
+                                      deleteMutation.mutate(invoice.id)
+                                    }
+                                  }}
+                                  disabled={deleteMutation.isPending}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

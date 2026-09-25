@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
 import { FileText, Users, Package, TrendingUp, Eye, EyeOff, Calendar, Clock, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -13,19 +14,27 @@ export default function Dashboard() {
   const [startDate, setStartDate] = useState(tempStartDate)
   const [endDate, setEndDate] = useState(tempEndDate)
   const [showRevenue, setShowRevenue] = useState(false)
+  const [customDays, setCustomDays] = useState('')
   const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(endDate).toISOString() }
 
-  const setQuickRange = (range: string) => {
+  const setQuickRange = (range: string | number) => {
     const end = new Date()
+    end.setHours(23, 59, 59, 999)
     const start = new Date(end)
-    if (range === 'today') start.setHours(0, 0, 0, 0)
-    if (range === '7days') start.setDate(start.getDate() - 7)
-    if (range === '30days') start.setDate(start.getDate() - 30)
-    if (range === 'month') start.setDate(1)
-    if (range === 'year') {
+
+    if (range === 'today') {
+      start.setHours(0, 0, 0, 0)
+    } else if (range === 'month') {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+    } else if (range === 'year') {
       start.setMonth(0, 1)
       start.setHours(0, 0, 0, 0)
+    } else if (typeof range === 'number') {
+      start.setDate(start.getDate() - range)
+      start.setHours(0, 0, 0, 0)
     }
+
     setTempStartDate(start.toISOString().slice(0, 16))
     setTempEndDate(end.toISOString().slice(0, 16))
   }
@@ -94,7 +103,18 @@ export default function Dashboard() {
     },
   ]
 
-  const recentInvoices = invoices?.slice(0, 5) || []
+  const quotationInvoiceMap = new Map<number, any[]>()
+  invoices?.forEach(inv => {
+    if (inv.invoice_type === 'invoice' && inv.source_quotation) {
+      const quoId = inv.source_quotation.id
+      if (!quotationInvoiceMap.has(quoId)) {
+        quotationInvoiceMap.set(quoId, [])
+      }
+      quotationInvoiceMap.get(quoId)?.push(inv)
+    }
+  })
+
+  const recentQuotations = invoices?.filter(inv => inv.invoice_type === 'quotation').slice(0, 5) || []
 
   return (
     <div className="space-y-8">
@@ -137,97 +157,112 @@ export default function Dashboard() {
         })}
       </div>
 
-      <Card className="border-2 border-blue-200 shadow-md">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-600" />
-              Time Range Filter
-            </CardTitle>
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              IST Timezone
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-600">QUICK SELECT</label>
-            <div className="flex flex-wrap gap-2">
-              {[['today', 'Today'], ['7days', 'Last 7 days'], ['30days', 'Last 30 days'], ['month', 'This month'], ['year', 'This year']].map(([value, label]) => (
+      <Card className="border border-blue-200">
+        <CardContent className="p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap gap-1">
+              {[['today', 'Today'], [7, '7d'], [30, '30d'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setQuickRange(value)}
-                  className="px-3 py-1.5 text-sm font-medium border-2 border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 hover:border-blue-500 transition-all"
+                  onClick={() => setQuickRange(value as any)}
+                  className="px-2 py-1 text-xs font-medium border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
                 >
                   {label}
                 </button>
               ))}
+              <div className="flex gap-1 items-center">
+                <Input
+                  type="number"
+                  placeholder="#"
+                  value={customDays}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                  className="w-12 h-7 text-xs px-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const days = parseInt(customDays)
+                    if (days > 0) setQuickRange(days)
+                  }}
+                  className="px-2 py-1 text-xs font-medium border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                >
+                  days
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">START DATE & TIME</label>
-              <input
-                aria-label="Start date and time"
-                type="datetime-local"
-                value={tempStartDate}
-                onChange={(e) => setTempStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600 block">END DATE & TIME</label>
-              <input
-                aria-label="End date and time"
-                type="datetime-local"
-                value={tempEndDate}
-                onChange={(e) => setTempEndDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              />
-            </div>
-          </div>
+            <input
+              aria-label="Start"
+              type="datetime-local"
+              value={tempStartDate}
+              onChange={(e) => setTempStartDate(e.target.value)}
+              className="w-44 h-7 px-2 text-xs border border-gray-300 rounded"
+            />
 
-          <div className="flex gap-2 pt-2">
-            <Button onClick={applyFilters} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium">
-              Apply Filter
+            <input
+              aria-label="End"
+              type="datetime-local"
+              value={tempEndDate}
+              onChange={(e) => setTempEndDate(e.target.value)}
+              className="w-44 h-7 px-2 text-xs border border-gray-300 rounded"
+            />
+
+            <Button onClick={applyFilters} size="sm" className="h-7 bg-blue-600 hover:bg-blue-700">
+              Apply
             </Button>
-            <Button onClick={resetFilters} variant="outline" className="border-2 border-gray-300 hover:bg-gray-50">
-              <RefreshCw className="h-4 w-4" />
+            <Button onClick={resetFilters} size="sm" variant="outline" className="h-7">
+              <RefreshCw className="h-3 w-3" />
             </Button>
+            <span className="text-[10px] text-gray-500 ml-auto">IST</span>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="border-2 border-purple-200 shadow-md">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
-          <CardTitle className="text-gray-800 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-purple-600" />
-            Documents In Selected Period
+      <Card className="border border-purple-200">
+        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 py-3">
+          <CardTitle className="text-base text-gray-800 flex items-center gap-2">
+            <FileText className="h-4 w-4 text-purple-600" />
+            Recent Documents
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-4">
-          {recentInvoices.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No invoices yet. Create your first invoice!</p>
+        <CardContent className="pt-3 space-y-2">
+          {recentQuotations.length === 0 ? (
+            <p className="text-gray-500 text-center py-4 text-sm">No documents yet</p>
           ) : (
-            <div className="space-y-3">
-              {recentInvoices.map((invoice) => (
-                <div key={invoice.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border-2 border-gray-200 hover:border-purple-300 transition-all">
-                  <div>
-                    <p className="font-bold text-gray-900">{invoice.invoice_number}</p>
-                    <p className="text-sm text-gray-600">{invoice.customer.name}</p>
+            recentQuotations.map((quotation) => {
+              const converted = quotationInvoiceMap.get(quotation.id) || []
+              return (
+                <div key={quotation.id} className="space-y-1">
+                  <div className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200 text-sm">
+                    <div>
+                      <p className="font-bold text-gray-900">{quotation.invoice_number}</p>
+                      <p className="text-xs text-gray-600">{quotation.customer.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-gray-900">{formatCurrency(quotation.total_amount)}</p>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">
+                        QUOTATION
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-lg text-gray-900">{formatCurrency(invoice.total_amount)}</p>
-                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${invoice.invoice_type === 'quotation' ? 'bg-amber-200 text-amber-800 border border-amber-300' : 'bg-blue-200 text-blue-800 border border-blue-300'}`}>
-                      {invoice.invoice_type === 'quotation' ? 'QUOTATION' : 'TAX INVOICE'}
-                    </span>
-                  </div>
+                  {converted.map((invoice) => (
+                    <div key={invoice.id} className="flex items-center justify-between p-2 ml-4 bg-purple-50 rounded border border-purple-200 text-sm">
+                      <div>
+                        <p className="font-bold text-gray-700"><span className="text-gray-400 mr-1">└─</span>{invoice.invoice_number}</p>
+                        <p className="text-xs text-gray-600">{invoice.customer.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-gray-900">{formatCurrency(invoice.total_amount)}</p>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-200 text-purple-800">
+                          INVOICE
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })
           )}
         </CardContent>
       </Card>
