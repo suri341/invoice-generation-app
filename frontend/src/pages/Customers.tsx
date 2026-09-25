@@ -17,6 +17,13 @@ export default function Customers() {
   const [broadcastMessage, setBroadcastMessage] = useState('')
   const queryClient = useQueryClient()
 
+  const downloadMutation = useMutation({
+    mutationFn: (params: { id: number; filename: string }) => invoicesApi.downloadPdf(params.id),
+    onSuccess: (response, params) => {
+      downloadBlob(response.data, params.filename)
+    },
+  })
+
   const { data: customers, isLoading } = useQuery({
     queryKey: ['customers', search],
     queryFn: () => customersApi.getAll({ search }).then(res => res.data),
@@ -229,8 +236,9 @@ export default function Customers() {
                           <button
                             type="button"
                             title="Download"
-                            onClick={async () => downloadBlob((await invoicesApi.downloadPdf(quotation.id)).data, `${quotation.invoice_number}.pdf`)}
-                            className="p-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                            onClick={() => downloadMutation.mutate({ id: quotation.id, filename: `${quotation.invoice_number}.pdf` })}
+                            disabled={downloadMutation.isPending}
+                            className="p-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                           >
                             <Download className="h-3 w-3" />
                           </button>
@@ -251,8 +259,9 @@ export default function Customers() {
                             <button
                               type="button"
                               title="Download"
-                              onClick={async () => downloadBlob((await invoicesApi.downloadPdf(invoice.id)).data, `${invoice.invoice_number}.pdf`)}
-                              className="p-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                              onClick={() => downloadMutation.mutate({ id: invoice.id, filename: `${invoice.invoice_number}.pdf` })}
+                              disabled={downloadMutation.isPending}
+                              className="p-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                             >
                               <Download className="h-3 w-3" />
                             </button>
