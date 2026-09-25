@@ -113,51 +113,113 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     customer = invoice.customer
     customer_state = customer.state or "Andhra Pradesh"
 
-    # Build customer info lines for left column
-    customer_line1 = f"M/s. {customer.name}" if not customer.company_name else f"M/s. {customer.company_name}"
-    customer_line2 = customer.address if customer.address else ""
-
-    # Build Party Details table matching reference invoice.pdf EXACTLY
-    meta_data = [
-        # Row 1: "Party Details" header | "Invoice/Quotation No. : value"
-        [p("Party Details", section), "", p(number_label, label), p(f": {invoice.invoice_number}", normal)],
-        # Row 2: Customer name/company (M/s. format) | "Dated : date"
-        [p(customer_line1, normal), "", p("Dated", label), p(f": {_date(invoice.invoice_date)}", normal)],
-        # Row 3: Customer address | "Place of Supply : state"
-        [p(customer_line2, normal), "", p("Place of Supply", label), p(f": {customer_state}", normal)],
-    ]
-
+    # Build Party Details matching reference invoice.pdf EXACTLY
     if not is_quotation:
-        # Tax Invoice format - additional rows matching reference invoice.pdf EXACTLY
-        # Row 4: Empty | "Transport :"
-        meta_data.append([p("", small), "", p("Transport", label), p(":", normal)])
-        # Row 5: "Party Mobile No" | "Vehicle No. :"
-        meta_data.append([p("Party Mobile No", small), "", p("Vehicle No.", label), p(":", normal)])
-        # Row 6: "GSTIN    [value]" | "Station :"
-        gstin_value = customer.gstin if customer.gstin else ""
-        meta_data.append([p(f"GSTIN    {gstin_value}", small), "", p("Station", label), p(":", normal)])
-        # Row 7: "Nos      [phone]" | "E-Way Bill No. : [value]"
-        eway_value = ""  # Can be added to model later
-        meta_data.append([p(f"Nos      {customer.phone}", small), "", p("E-Way Bill No.", label), p(f": {eway_value}", normal)])
-        # Row 8: Empty | "Quotation No." or "Quotation No. [value]" if converted
-        if invoice.source_quotation:
-            meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
-        else:
-            # No source quotation - show just empty "Quotation No." label
-            meta_data.append([p("", small), "", p("Quotation No.", label), p("", normal)])
+        # TAX INVOICE - Full Party Details
+        # Left column - use customer data as entered in customer page
+        left_content = [
+            p("Party Details", section),
+            p(f"M/s. {customer.name}", normal),  # Customer name as entered
+        ]
+
+        # Add company name if exists
+        if customer.company_name:
+            left_content.append(p(customer.company_name, normal))
+
+        # Add address if exists
+        if customer.address:
+            left_content.append(p(customer.address, normal))
+
+        # Add city, state, pincode line if any exists
+        city_line_parts = []
+        if customer.city:
+            city_line_parts.append(customer.city)
+        if customer.state:
+            city_line_parts.append(customer.state)
+        if customer.pincode:
+            city_line_parts.append(f"- {customer.pincode}")
+        if city_line_parts:
+            left_content.append(p(" ".join(city_line_parts) + ".", normal))
+
+        # Add empty line if needed to reach row 4
+        while len(left_content) < 4:
+            left_content.append(p("", normal))
+
+        # Add mobile, GSTIN, Nos rows
+        left_content.append(p("Party Mobile No", small))
+        left_content.append(p(f"GSTIN    {customer.gstin if customer.gstin else ''}", small))
+        left_content.append(p(f"Nos      {customer.phone}", small))
+
+        # Right column content
+        right_content = [
+            p(f"Invoice No.      : {invoice.invoice_number}", normal),
+            p(f"Dated            : {_date(invoice.invoice_date)}", normal),
+            p(f"Place of Supply  : {customer_state}", normal),
+            p("Transport        :", normal),
+            p("Vehicle No.      :", normal),
+            p("Station          :", normal),
+            p("E-Way Bill No.   :", normal),
+        ]
+
+        # Create the party details table with 2 columns
+        party_table_data = []
+        for i in range(max(len(left_content), len(right_content))):
+            left = left_content[i] if i < len(left_content) else p("", normal)
+            right = right_content[i] if i < len(right_content) else p("", normal)
+            party_table_data.append([left, right])
+
+        elements.append(Table(party_table_data, colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
+            ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ])))
+
+        # Add separate row for "Quotation No." below the party details
+        quotation_no_table = Table([[p("Quotation No.", label)]], colWidths=[7.45 * inch], style=TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(quotation_no_table)
+
     else:
-        # Quotation format - simple, NO GSTIN in body, just show mobile
-        meta_data.append([p(f"Party Mobile No: {customer.phone}", small), "", p("", normal), p("", normal)])
+        # QUOTATION - Simpler format, NO GSTIN in body
+        customer_display = customer.company_name if customer.company_name else customer.name
 
-    elements.append(Table(meta_data, colWidths=[3.7 * inch, 0.1 * inch, 1.8 * inch, 1.85 * inch], style=TableStyle([
-        ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
-        ("SPAN", (0, 0), (1, 0)), ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ])))
-    elements.append(Spacer(1, 0.12 * inch))
+        # Build address
+        address_parts = []
+        if customer.address:
+            address_parts.append(customer.address)
+        if customer.city:
+            city_part = customer.city
+            if customer.pincode:
+                city_part += f" - {customer.pincode}"
+            address_parts.append(city_part)
+        customer_address = ", ".join(address_parts) if address_parts else ""
 
+        quotation_data = [
+            [p("Party Details", section), p(f"Quotation No.    : {invoice.invoice_number}", normal)],
+            [p(customer_display, normal), p(f"Dated            : {_date(invoice.invoice_date)}", normal)],
+            [p(customer_address, normal), p(f"Place of Supply  : {customer_state}", normal)],
+            [p(f"Party Mobile No: {customer.phone}", small), p("", normal)],
+        ]
 
+        elements.append(Table(quotation_data, colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
+            ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ])))
+
+    # Items table with HSN codes
     items_data = [[p("S.No", section), p("Description of Goods", section), p("HSN/SAC\nCode", section), p("Qty.", section), p("Unit", section), p("Rate", section), p("Amount", section)]]
     for index, item in enumerate(invoice.items, 1):
         hsn = item.hsn_code or ""
@@ -212,46 +274,58 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     ]))
     elements.extend([amount_words_table, Spacer(1, 0.12 * inch)])
 
-    # Bank Details - use from settings or default
-    bank_details = getattr(settings, "BANK_DETAILS", "")
-    if not bank_details:
-        bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
+    # Bank Details and Terms & Conditions - ONLY FOR TAX INVOICES
+    if not is_quotation:
+        # Tax Invoice - Show Bank Details and Terms
+        bank_details = getattr(settings, "BANK_DETAILS", "")
+        if not bank_details:
+            bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
 
-    # Terms & Conditions matching reference invoice.pdf EXACTLY
-    # For tax invoices, always use the standard terms from reference
-    default_terms = """E. & O.E
+        default_terms = """E. & O.E
 1. Goods once sold will not be taken back or exchanged.
 2. Interest 18& p.a. will be charged if the payment
    is not made with in the stipulated time
 3. Subject to "TOHANA" Jurisdiction only."""
 
-    # Always use default terms for consistency with reference invoice.pdf
-    terms = default_terms if not is_quotation else (invoice.terms_conditions or default_terms)
+        terms = default_terms
 
-    lower = Table([
-        [p("Bank Details :", label), p("Terms & Conditions", label)],
-        [p(bank_details, small), p(terms, small)],
-    ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(lower)
+        lower = Table([
+            [p("Bank Details :", label), p("Terms & Conditions", label)],
+            [p(bank_details, small), p(terms, small)],
+        ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(lower)
 
-    # Signature section matching reference invoice.pdf
-    signature_table = Table([
-        [p("Receiver's Signature :", label), p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_CENTER))],
-        [p("", normal), p("", normal)],
-        [p("", normal), p("Authorised Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_RIGHT))],
-    ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 15),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    elements.extend([Spacer(1, 0.15 * inch), signature_table])
+        # Signature section for Tax Invoice
+        signature_table = Table([
+            [p("Receiver's Signature :", label), p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_CENTER))],
+            [p("", normal), p("", normal)],
+            [p("", normal), p("Authorised Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_RIGHT))],
+        ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 15),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.extend([Spacer(1, 0.15 * inch), signature_table])
+    else:
+        # Quotation - NO Bank Details, NO Terms, simpler signature
+        signature_table = Table([
+            [p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_RIGHT))],
+            [p("", normal)],
+            [p("Authorised Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_RIGHT))],
+        ], colWidths=[7.45 * inch], style=TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 15),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.extend([Spacer(1, 0.25 * inch), signature_table])
 
     def set_metadata(canvas, document):
         canvas.setTitle(f"{copy_text} {invoice.invoice_number}")
