@@ -81,16 +81,22 @@ export default function CreateInvoice() {
     setItems(newItems)
   }
 
-  const selectPart = (index: number, partId: number) => {
-    const part = parts?.find(p => p.id === partId)
-    if (part) {
-      updateItem(index, 'part_id', part.id)
-      updateItem(index, 'part_name', part.name)
-      updateItem(index, 'description', part.description || '')
-      updateItem(index, 'hsn_code', part.hsn_code || '')
-      updateItem(index, 'unit', part.unit)
-      updateItem(index, 'unit_price', part.price)
-    }
+  const selectPart = (index: number, partId: number | null) => {
+    const part = partId === null ? undefined : parts?.find(p => p.id === partId)
+    setItems(currentItems => currentItems.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      if (!part) return { ...item, part_id: undefined }
+
+      return {
+        ...item,
+        part_id: part.id,
+        part_name: part.name,
+        description: part.description || '',
+        hsn_code: part.hsn_code || '',
+        unit: part.unit,
+        unit_price: part.price,
+      }
+    }))
   }
 
   const calculateSubtotal = () => {
@@ -123,10 +129,9 @@ export default function CreateInvoice() {
       return
     }
 
-    // Check that all items have a part selected
-    const invalidItems = items.filter(item => !item.part_id || !item.part_name)
+    const invalidItems = items.filter(item => !item.part_id || !item.part_name.trim())
     if (invalidItems.length > 0) {
-      alert('Please select a part for all items')
+      alert('Please select a catalog part for every item')
       return
     }
 
@@ -221,13 +226,14 @@ export default function CreateInvoice() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Select Part (Optional)
+                          Select Part *
                         </label>
                         <select
-                          onChange={(e) => selectPart(index, Number(e.target.value))}
+                          value={item.part_id ?? ''}
+                          onChange={(e) => selectPart(index, e.target.value ? Number(e.target.value) : null)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md"
                         >
-                          <option value="">Custom Item</option>
+                          <option value="">Select a catalog part</option>
                           {parts?.map((part) => (
                             <option key={part.id} value={part.id}>
                               {part.name} - {formatCurrency(part.price)}
@@ -243,8 +249,7 @@ export default function CreateInvoice() {
                         <Input
                           value={item.part_name}
                           readOnly
-                          disabled
-                          placeholder="Select a part from dropdown above"
+                          placeholder="Select a catalog part above"
                           className="bg-gray-100 cursor-not-allowed"
                         />
                       </div>
