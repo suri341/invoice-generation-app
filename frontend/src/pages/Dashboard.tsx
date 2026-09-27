@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
-import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDown } from 'lucide-react'
+import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDown, Download } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import axios from 'axios'
 
 export default function Dashboard() {
   // Initialize with "None" filter to show all data by default
@@ -18,6 +19,13 @@ export default function Dashboard() {
   const [selectedRange, setSelectedRange] = useState('none')
   const [showCustom, setShowCustom] = useState(false)
   const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(endDate).toISOString() }
+
+  // Monthly report state
+  const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1)
+  const [reportYear, setReportYear] = useState(new Date().getFullYear())
+  const [reportCustom, setReportCustom] = useState(false)
+  const [reportStartDate, setReportStartDate] = useState('')
+  const [reportEndDate, setReportEndDate] = useState('')
 
   const timeRanges = [
     { value: 'none', label: 'None' },
@@ -103,6 +111,38 @@ export default function Dashboard() {
     setSelectedRange('none')
     setShowCustom(false)
   }
+
+  const downloadMonthlyReport = async () => {
+    try {
+      let url = '/api/reports/monthly?'
+
+      if (reportCustom && reportStartDate && reportEndDate) {
+        url += `date_from=${new Date(reportStartDate).toISOString()}&date_to=${new Date(reportEndDate).toISOString()}`
+      } else {
+        url += `month=${reportMonth}&year=${reportYear}`
+      }
+
+      const response = await axios.get(url, {
+        responseType: 'blob'
+      })
+
+      const blob = new Blob([response.data], { type: 'text/csv' })
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = reportCustom
+        ? `monthly_report_${reportStartDate}_to_${reportEndDate}.csv`
+        : `monthly_report_${reportYear}-${String(reportMonth).padStart(2, '0')}.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(downloadUrl)
+    } catch (error) {
+      console.error('Error downloading report:', error)
+      alert('Failed to download report')
+    }
+  }
+
   const { data: customers } = useQuery({
     queryKey: ['customers'],
     queryFn: () => customersApi.getAll().then(res => res.data),
@@ -136,7 +176,7 @@ export default function Dashboard() {
       borderColor: 'border-green-200',
     },
     {
-      title: 'Total Invoices',
+      title: 'Total Documents',
       value: invoices?.length || 0,
       icon: FileText,
       color: 'text-purple-600',
@@ -297,6 +337,111 @@ export default function Dashboard() {
               )
             })
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border border-green-200">
+        <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 py-3">
+          <CardTitle className="text-base text-gray-800 flex items-center gap-2">
+            <Download className="h-4 w-4 text-green-600" />
+            Monthly Report Download
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <p className="text-sm text-gray-600 mb-4">
+            Download a comprehensive report with all quotations and invoices including customer details
+          </p>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  checked={!reportCustom}
+                  onChange={() => setReportCustom(false)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Select Month</span>
+              </label>
+              <label className="inline-flex items-center ml-4">
+                <input
+                  type="radio"
+                  checked={reportCustom}
+                  onChange={() => setReportCustom(true)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Custom Date Range</span>
+              </label>
+            </div>
+
+            {!reportCustom ? (
+              <div className="flex gap-2">
+                <select
+                  value={reportMonth}
+                  onChange={(e) => setReportMonth(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={1}>January</option>
+                  <option value={2}>February</option>
+                  <option value={3}>March</option>
+                  <option value={4}>April</option>
+                  <option value={5}>May</option>
+                  <option value={6}>June</option>
+                  <option value={7}>July</option>
+                  <option value={8}>August</option>
+                  <option value={9}>September</option>
+                  <option value={10}>October</option>
+                  <option value={11}>November</option>
+                  <option value={12}>December</option>
+                </select>
+                <select
+                  value={reportYear}
+                  onChange={(e) => setReportYear(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-500 self-center">to</span>
+                <input
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+
+            <Button
+              onClick={downloadMonthlyReport}
+              className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+              disabled={reportCustom && (!reportStartDate || !reportEndDate)}
+            >
+              <Download className="h-4 w-4" />
+              Download Report (CSV)
+            </Button>
+
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>Report includes:</p>
+              <ul className="list-disc list-inside pl-2">
+                <li>All quotations and invoices for selected period</li>
+                <li>Customer names, company names, phone numbers</li>
+                <li>Customer types and missionary information</li>
+                <li>Quotation → Invoice hierarchy (tree structure)</li>
+                <li>Tax details (CGST, SGST, IGST)</li>
+              </ul>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

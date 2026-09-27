@@ -32,15 +32,23 @@ class InvoiceService:
 
         return f"{prefix}-{year}{month:02d}-{next_number:04d}"
 
-    def calculate_amounts(self, items: list, discount_percentage: float = 0.0) -> dict:
+    def calculate_amounts(self, items: list, discount_percentage: float = 0.0, tax_type: str = "cgst_sgst") -> dict:
         subtotal = sum(item.amount for item in items)
 
         discount_amount = (subtotal * discount_percentage) / 100
         subtotal_after_discount = subtotal - discount_amount
 
-        cgst_amount = (subtotal_after_discount * settings.CGST_RATE) / 100
-        sgst_amount = (subtotal_after_discount * settings.SGST_RATE) / 100
-        igst_amount = 0.0
+        # Calculate taxes based on tax_type
+        if tax_type == "igst":
+            # IGST only (18%)
+            cgst_amount = 0.0
+            sgst_amount = 0.0
+            igst_amount = (subtotal_after_discount * settings.IGST_RATE) / 100
+        else:
+            # CGST + SGST (9% each)
+            cgst_amount = (subtotal_after_discount * settings.CGST_RATE) / 100
+            sgst_amount = (subtotal_after_discount * settings.SGST_RATE) / 100
+            igst_amount = 0.0
 
         total_amount = subtotal_after_discount + cgst_amount + sgst_amount + igst_amount
 
@@ -59,6 +67,7 @@ class InvoiceService:
         db_invoice = Invoice(
             invoice_number=invoice_number,
             invoice_type=invoice_data.invoice_type,
+            tax_type=invoice_data.tax_type,
             customer_id=invoice_data.customer_id,
             invoice_date=invoice_data.invoice_date or datetime.now(),
             due_date=invoice_data.due_date,
@@ -84,7 +93,7 @@ class InvoiceService:
 
         db_invoice.items = invoice_items
 
-        amounts = self.calculate_amounts(invoice_items, invoice_data.discount_percentage)
+        amounts = self.calculate_amounts(invoice_items, invoice_data.discount_percentage, invoice_data.tax_type)
         db_invoice.subtotal = amounts["subtotal"]
         db_invoice.discount_amount = amounts["discount_amount"]
         db_invoice.cgst_amount = amounts["cgst_amount"]
@@ -128,7 +137,8 @@ class InvoiceService:
 
             amounts = self.calculate_amounts(
                 new_items,
-                invoice.discount_percentage if invoice_update.discount_percentage is None else invoice_update.discount_percentage
+                invoice.discount_percentage if invoice_update.discount_percentage is None else invoice_update.discount_percentage,
+                invoice.tax_type  # Use existing tax_type from invoice
             )
             invoice.subtotal = amounts["subtotal"]
             invoice.discount_amount = amounts["discount_amount"]
@@ -146,6 +156,7 @@ class InvoiceService:
         invoice = Invoice(
             invoice_number=self.generate_invoice_number(InvoiceType.INVOICE.value),
             invoice_type=InvoiceType.INVOICE,
+            tax_type=quotation.tax_type,  # Preserve tax type from quotation
             customer_id=quotation.customer_id,
             source_quotation_id=quotation.id,
             invoice_date=datetime.now(),
@@ -167,7 +178,7 @@ class InvoiceService:
             )
             for item in quotation.items
         ]
-        amounts = self.calculate_amounts(invoice.items, invoice.discount_percentage)
+        amounts = self.calculate_amounts(invoice.items, invoice.discount_percentage, invoice.tax_type)
         for field, value in amounts.items():
             setattr(invoice, field, value)
         self.db.add(invoice)

@@ -11,6 +11,7 @@ import type { Customer } from '@/types'
 
 export default function Customers() {
   const [search, setSearch] = useState('')
+  const [customerTypeFilter, setCustomerTypeFilter] = useState<string>('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | undefined>(undefined)
   const [historyCustomerId, setHistoryCustomerId] = useState<number | null>(null)
@@ -89,6 +90,14 @@ export default function Customers() {
     return <div className="text-center py-12">Loading customers...</div>
   }
 
+  // Filter customers by type
+  const filteredCustomers = customers?.filter(customer => {
+    if (customerTypeFilter && customer.customer_type !== customerTypeFilter) {
+      return false
+    }
+    return true
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -114,14 +123,25 @@ export default function Customers() {
                 className="pl-10"
               />
             </div>
+            <div className="w-48">
+              <select
+                value={customerTypeFilter}
+                onChange={(e) => setCustomerTypeFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Types</option>
+                <option value="Boiled">Boiled</option>
+                <option value="Raw Rice">Raw Rice</option>
+              </select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {customers && customers.length === 0 ? (
+          {filteredCustomers && filteredCustomers.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No customers found</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {customers?.map((customer: Customer) => (
+              {filteredCustomers?.map((customer: Customer) => (
                 <Card key={customer.id} className="border-2 border-indigo-200 hover:shadow-xl hover:border-indigo-400 transition-all bg-gradient-to-br from-white to-indigo-50">
                   <CardContent className="p-6">
                     <h3 className="font-semibold text-lg text-gray-900">{customer.name}</h3>
@@ -152,6 +172,25 @@ export default function Customers() {
                       <div className="mt-4 pt-4 border-t">
                         <p className="text-xs text-gray-500">GSTIN</p>
                         <p className="text-sm font-mono text-gray-700">{customer.gstin}</p>
+                      </div>
+                    )}
+
+                    {(customer.customer_type || customer.missionary_type) && (
+                      <div className="mt-4 pt-4 border-t">
+                        {customer.customer_type && (
+                          <div className="mb-2">
+                            <p className="text-xs text-gray-500">Customer Type</p>
+                            <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {customer.customer_type}
+                            </span>
+                          </div>
+                        )}
+                        {customer.missionary_type && (
+                          <div>
+                            <p className="text-xs text-gray-500">Missionary</p>
+                            <p className="text-sm text-gray-700">{customer.missionary_type}</p>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -13,6 +13,8 @@ class CustomerBase(BaseModel):
     state: Optional[str] = Field(None, max_length=100)
     pincode: Optional[str] = Field(None, max_length=10)
     gstin: Optional[str] = Field(None, max_length=15)
+    customer_type: Optional[str] = Field(None, max_length=50)  # Boiled, Raw Rice
+    missionary_type: Optional[str] = Field(None, max_length=100)  # Missionary info
 
 
 class CustomerCreate(CustomerBase):
@@ -29,6 +31,8 @@ class CustomerUpdate(BaseModel):
     state: Optional[str] = Field(None, max_length=100)
     pincode: Optional[str] = Field(None, max_length=10)
     gstin: Optional[str] = Field(None, max_length=15)
+    customer_type: Optional[str] = Field(None, max_length=50)
+    missionary_type: Optional[str] = Field(None, max_length=100)
 
 
 class CustomerResponse(CustomerBase):

@@ -36,302 +36,298 @@ def _number_words(number: int) -> str:
 
 def _amount_in_words(amount: float) -> str:
     rupees = int(abs(amount))
-    paise = int(round((abs(amount) - rupees) * 100))
-    result = f"Rupees {_number_words(rupees)}"
-    if paise:
-        result += f", {_number_words(paise)} Paise"
-    return result + " only."
+    result = f"Rupees {_number_words(rupees).lower()} only"
+    return result
 
 
 def _date(value) -> str:
-    return value.strftime("%d/%m/%Y") if value else "-"
+    return value.strftime("%d-%m-%Y") if value else "-"
 
 
 def generate_invoice_pdf(invoice: Invoice) -> str:
-    """Generate a traditional Indian quotation or tax invoice PDF."""
+    """Generate PDF matching invoice no 1_26-27.pdf EXACTLY"""
     pdf_dir = "generated_pdfs"
     os.makedirs(pdf_dir, exist_ok=True)
     filepath = os.path.join(pdf_dir, f"{invoice.invoice_number}.pdf")
 
     doc = SimpleDocTemplate(
-        filepath, pagesize=A4, rightMargin=0.42 * inch, leftMargin=0.42 * inch,
-        topMargin=0.35 * inch, bottomMargin=0.4 * inch,
+        filepath, pagesize=A4, rightMargin=0.5 * inch, leftMargin=0.5 * inch,
+        topMargin=0.4 * inch, bottomMargin=0.4 * inch,
     )
+
     styles = getSampleStyleSheet()
-    navy = colors.HexColor("#12304A")
-    teal = colors.HexColor("#0B7A75")
-    orange = colors.HexColor("#E58B28")
-    pale = colors.HexColor("#F2F6F7")
-    dark = colors.HexColor("#263746")
     is_quotation = invoice.invoice_type.value == "quotation"
 
-    def money(value: float, negative: bool = False) -> str:
-        """Format money - quotations use 'Rs. amount', tax invoices use plain 'amount'"""
-        sign = "-" if negative else ""
-        if is_quotation:
-            return f"{sign}Rs. {abs(value):,.2f}"
-        else:
-            # Tax invoice - no currency symbol, just plain number with commas
-            return f"{sign}{abs(value):,.2f}"
-
-    normal = ParagraphStyle("InvoiceNormal", parent=styles["Normal"], fontSize=8.5, leading=11, textColor=dark)
-    small = ParagraphStyle("InvoiceSmall", parent=normal, fontSize=7.5, leading=9)
-    label = ParagraphStyle("InvoiceLabel", parent=normal, fontName="Helvetica-Bold", textColor=navy)
-    title = ParagraphStyle("InvoiceTitle", parent=normal, fontSize=17, leading=20, fontName="Helvetica-Bold", textColor=colors.white, alignment=TA_CENTER)
-    section = ParagraphStyle("InvoiceSection", parent=normal, fontSize=9, fontName="Helvetica-Bold", textColor=colors.white)
+    # Styles
+    normal = ParagraphStyle("Normal", parent=styles["Normal"], fontSize=9, leading=11)
+    small = ParagraphStyle("Small", parent=normal, fontSize=8, leading=10)
+    bold = ParagraphStyle("Bold", parent=normal, fontName="Helvetica-Bold")
+    title = ParagraphStyle("Title", parent=normal, fontSize=14, fontName="Helvetica-Bold", alignment=TA_CENTER)
 
     def p(text, style=normal):
         return Paragraph(escape(str(text)).replace("\n", "<br/>"), style)
 
-    # Company header matching reference invoice.pdf exactly
-    company_lines = [
-        p(str(settings.COMPANY_NAME).upper(), ParagraphStyle("Company", parent=normal, fontSize=18, leading=21, fontName="Helvetica-Bold", textColor=navy, alignment=TA_CENTER)),
-        p(settings.COMPANY_ADDRESS, ParagraphStyle("CompanyAddress", parent=normal, alignment=TA_CENTER)),
-        p(getattr(settings, 'COMPANY_CITY', ''), ParagraphStyle("CompanyCity", parent=normal, alignment=TA_CENTER)),
-    ]
-    if settings.GSTIN:
-        company_lines.append(p(f"GSTIN : {settings.GSTIN}", ParagraphStyle("CompanyGstin", parent=normal, alignment=TA_CENTER, fontName="Helvetica-Bold")))
-
-    elements = [
-        Table([[company_lines]], colWidths=[7.45 * inch], style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E8F1F3")),
-            ("BOX", (0, 0), (-1, -1), 1.2, teal), ("TOPPADDING", (0, 0), (-1, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ])),
-        Spacer(1, 0.1 * inch),
-        Table([[p("QUOTATION" if is_quotation else "TAX INVOICE", title)]], colWidths=[7.45 * inch], style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), teal if is_quotation else navy),
-            ("BOX", (0, 0), (-1, -1), 0.5, orange), ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ])),
-        Spacer(1, 0.08 * inch),
-    ]
-
-    copy_text = "Quotation" if is_quotation else "Original Copy"
-    number_label = "Quotation No." if is_quotation else "Invoice No."
-
+    elements = []
     customer = invoice.customer
-    customer_state = customer.state or "Andhra Pradesh"
 
-    # Build Party Details matching reference invoice.pdf EXACTLY
-    if not is_quotation:
-        # TAX INVOICE - Full Party Details
-        # Left column - use customer data as entered in customer page
-        left_content = [
-            p("Party Details", section),
-            p(f"M/s. {customer.name}", normal),  # Customer name as entered
-        ]
+    # ========== HEADER ==========
+    header_data = [
+        [p("", normal), p("TAX INVOICE" if not is_quotation else "QUOTATION", title), p("Original Copy" if not is_quotation else "Quotation", small)]
+    ]
 
-        # Add company name if exists
+    elements.append(Table(header_data, colWidths=[2*inch, 3.5*inch, 2*inch], style=TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+        ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+    ])))
+
+    # Company header
+    company_header = [
+        [p(settings.COMPANY_NAME.upper(), ParagraphStyle("CompName", parent=bold, fontSize=16, alignment=TA_CENTER))],
+        [p(settings.COMPANY_ADDRESS, ParagraphStyle("Addr", parent=normal, fontSize=9, alignment=TA_CENTER))],
+        [p(getattr(settings, 'COMPANY_CITY', 'Kakinada, Andhra Pradesh - 533444'), ParagraphStyle("City", parent=normal, fontSize=9, alignment=TA_CENTER))],
+        [p(f"GSTIN : {settings.GSTIN}", ParagraphStyle("GSTIN", parent=bold, fontSize=9, alignment=TA_CENTER))],
+    ]
+
+    elements.append(Table(company_header, colWidths=[7.5*inch], style=TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.black),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ])))
+
+    elements.append(Spacer(1, 0.1*inch))
+
+    # ========== PARTY DETAILS ==========
+    if is_quotation:
+        # QUOTATION: Plain box, no grid rows
+        party_lines = []
+        party_lines.append(f"{customer.name}")
         if customer.company_name:
-            left_content.append(p(customer.company_name, normal))
-
-        # Add address if exists
+            party_lines.append(customer.company_name)
         if customer.address:
-            left_content.append(p(customer.address, normal))
-
-        # Add city, state, pincode line if any exists
-        city_line_parts = []
+            party_lines.append(customer.address)
+        city_parts = []
         if customer.city:
-            city_line_parts.append(customer.city)
-        if customer.state:
-            city_line_parts.append(customer.state)
+            city_parts.append(customer.city)
         if customer.pincode:
-            city_line_parts.append(f"- {customer.pincode}")
-        if city_line_parts:
-            left_content.append(p(" ".join(city_line_parts) + ".", normal))
+            city_parts.append(f"- {customer.pincode}")
+        if city_parts:
+            party_lines.append(" ".join(city_parts) + ".")
 
-        # Add empty line if needed to reach row 4
-        while len(left_content) < 4:
-            left_content.append(p("", normal))
+        party_lines.append("")
+        party_lines.append(f"Party Mobile No {customer.phone}")
 
-        # Add mobile, GSTIN, Nos rows
-        left_content.append(p("Party Mobile No", small))
-        left_content.append(p(f"GSTIN    {customer.gstin if customer.gstin else ''}", small))
-        left_content.append(p(f"Nos      {customer.phone}", small))
+        party_text = "<br/>".join(party_lines)
 
-        # Right column content
-        right_content = [
-            p(f"Invoice No.      : {invoice.invoice_number}", normal),
-            p(f"Dated            : {_date(invoice.invoice_date)}", normal),
-            p(f"Place of Supply  : {customer_state}", normal),
-            p("Transport        :", normal),
-            p("Vehicle No.      :", normal),
-            p("Station          :", normal),
-            p("E-Way Bill No.   :", normal),
+        # Right side
+        right_lines = [
+            f"Quotation No.    : {invoice.invoice_number}",
+            f"Dated            : {_date(invoice.invoice_date)}",
+            f"Place of Supply  : {customer.state or 'Andhra Pradesh'}",
         ]
+        right_text = "<br/>".join(right_lines)
 
-        # Create the party details table with 2 columns
-        party_table_data = []
-        for i in range(max(len(left_content), len(right_content))):
-            left = left_content[i] if i < len(left_content) else p("", normal)
-            right = right_content[i] if i < len(right_content) else p("", normal)
-            party_table_data.append([left, right])
-
-        elements.append(Table(party_table_data, colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+        party_table = Table([
+            [p("Party Details", bold), p(right_text, normal)]
+        ], colWidths=[3.75*inch, 3.75*inch], style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])))
-
-        # Add separate row for "Quotation No." below the party details
-        quotation_no_table = Table([[p("Quotation No.", label)]], colWidths=[7.45 * inch], style=TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(quotation_no_table)
-
-    else:
-        # QUOTATION - Simpler format, NO GSTIN in body
-        customer_display = customer.company_name if customer.company_name else customer.name
-
-        # Build address
-        address_parts = []
-        if customer.address:
-            address_parts.append(customer.address)
-        if customer.city:
-            city_part = customer.city
-            if customer.pincode:
-                city_part += f" - {customer.pincode}"
-            address_parts.append(city_part)
-        customer_address = ", ".join(address_parts) if address_parts else ""
-
-        quotation_data = [
-            [p("Party Details", section), p(f"Quotation No.    : {invoice.invoice_number}", normal)],
-            [p(customer_display, normal), p(f"Dated            : {_date(invoice.invoice_date)}", normal)],
-            [p(customer_address, normal), p(f"Place of Supply  : {customer_state}", normal)],
-            [p(f"Party Mobile No: {customer.phone}", small), p("", normal)],
-        ]
-
-        elements.append(Table(quotation_data, colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])))
-
-    # Items table with HSN codes
-    items_data = [[p("S.No", section), p("Description of Goods", section), p("HSN/SAC\nCode", section), p("Qty.", section), p("Unit", section), p("Rate", section), p("Amount", section)]]
-    for index, item in enumerate(invoice.items, 1):
-        hsn = item.hsn_code or ""
-        description = item.part_name + (f"\n{item.description}" if item.description else "")
-        items_data.append([p(str(index), normal), p(description, normal), p(hsn, normal), p(f"{item.quantity:.2f}", normal), p(item.unit, normal), p(f"{item.unit_price:,.2f}", normal), p(f"{item.amount:,.2f}", normal)])
-    items_table = Table(items_data, colWidths=[0.42 * inch, 2.45 * inch, 0.78 * inch, 0.55 * inch, 0.62 * inch, 1.25 * inch, 1.38 * inch], repeatRows=1, style=TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), navy), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#AABCC1")), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, pale]),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("ALIGN", (1, 1), (1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    elements.extend([items_table, Spacer(1, 0.1 * inch)])
-
-    # Summary section matching invoice.pdf reference
-    summary = []
-
-    # First line shows subtotal (no label, just amount)
-    summary.append([p("", normal), p(money(invoice.subtotal), normal)])
-
-    # Add freight/forwarding if there's any additional charges (can use notes or custom field)
-    # For now, we'll skip this as it's not in the model
-
-    # Add taxes for Tax Invoice
-    if not is_quotation:
-        # Add CGST and SGST
-        if invoice.cgst_amount > 0 and invoice.sgst_amount > 0:
-            summary.append([p(f"Add : CGST ({settings.CGST_RATE:g}%)", normal), p(money(invoice.cgst_amount), normal)])
-            summary.append([p(f"Add : SGST ({settings.SGST_RATE:g}%)", normal), p(money(invoice.sgst_amount), normal)])
-        # Or IGST
-        if invoice.igst_amount > 0:
-            summary.append([p("Add : IGST", normal), p(money(invoice.igst_amount), normal)])
-
-    # Grand Total
-    summary.append([p("GRAND TOTAL", ParagraphStyle("GrandLabel", parent=normal, fontName="Helvetica-Bold", textColor=navy)), p(money(invoice.total_amount), ParagraphStyle("GrandValue", parent=normal, fontName="Helvetica-Bold", textColor=navy))])
-
-    summary_table = Table(summary, colWidths=[5.65 * inch, 1.8 * inch], style=TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("LINEABOVE", (0, -1), (-1, -1), 1.4, colors.black),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    elements.extend([summary_table, Spacer(1, 0.08 * inch)])
-
-    amount_words_table = Table([
-        [p("AMOUNT IN WORDS :", label)],
-        [p(_amount_in_words(invoice.total_amount), normal)],
-    ], colWidths=[7.45 * inch], style=TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), pale),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7C8CD")),
-        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    elements.extend([amount_words_table, Spacer(1, 0.12 * inch)])
-
-    # Bank Details and Terms & Conditions - ONLY FOR TAX INVOICES
-    if not is_quotation:
-        # Tax Invoice - Show Bank Details and Terms
-        bank_details = getattr(settings, "BANK_DETAILS", "")
-        if not bank_details:
-            bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
-
-        default_terms = """E. & O.E
-1. Goods once sold will not be taken back or exchanged.
-2. Interest 18& p.a. will be charged if the payment
-   is not made with in the stipulated time
-3. Subject to "TOHANA" Jurisdiction only."""
-
-        terms = default_terms
-
-        lower = Table([
-            [p("Bank Details :", label), p("Terms & Conditions", label)],
-            [p(bank_details, small), p(terms, small)],
-        ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+
+        # Add party text as a plain paragraph in the left cell
+        party_table_data = [
+            [p(party_text, normal), p(right_text, normal)]
+        ]
+
+        party_table = Table(party_table_data, colWidths=[3.75*inch, 3.75*inch], style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+
+        elements.append(party_table)
+
+    else:
+        # TAX INVOICE: Match invoice no 1_26-27.pdf structure EXACTLY
+        left_lines = []
+        left_lines.append(f"M/s. {customer.company_name if customer.company_name else customer.name}")
+        if customer.address:
+            left_lines.append(customer.address)
+        city_parts = []
+        if customer.city:
+            city_parts.append(customer.city)
+        if customer.pincode:
+            city_parts.append(f"- {customer.pincode}")
+        if city_parts:
+            left_lines.append(" ".join(city_parts) + ".")
+
+        left_lines.append("")
+        left_lines.append(f"Party Mobile No {customer.phone}")
+        if customer.gstin:
+            left_lines.append(f"GSTIN    {customer.gstin}")
+        # Add "Nos" with a reference number (could be quotation number or similar)
+        nos_ref = invoice.source_quotation.invoice_number if invoice.source_quotation else invoice.invoice_number
+        left_lines.append(f"Nos      {nos_ref}")
+
+        left_text = "<br/>".join(left_lines)
+
+        # Right side
+        right_lines = [
+            f"Invoice No.      : {invoice.invoice_number}",
+            f"Dated            : {_date(invoice.invoice_date)}",
+            f"Place of Supply  : {customer.state or 'Andhra Pradesh'} ({customer.state or 'Telangana'})",
+            f"Transport        :",
+            f"Vehicle No.      :",
+            f"Station          :",
+            f"E-Way Bill No.   :",
+        ]
+        right_text = "<br/>".join(right_lines)
+
+        party_table_data = [
+            [p("Party Details", bold), p(right_text, normal)],
+            [p(left_text, normal), p("", normal)],
+        ]
+
+        elements.append(Table(party_table_data, colWidths=[3.75*inch, 3.75*inch], style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(lower)
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ])))
 
-        # Signature section for Tax Invoice
-        signature_table = Table([
-            [p("Receiver's Signature :", label), p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_CENTER))],
-            [p("", normal), p("", normal)],
-            [p("", normal), p("Authorised Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_RIGHT))],
-        ], colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
+        # Quotation No. row
+        elements.append(Table([[p("Quotation No.", normal)]], colWidths=[7.5*inch], style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ])))
+
+    elements.append(Spacer(1, 0.05*inch))
+
+    # ========== ITEMS TABLE ==========
+    items_data = [[
+        p("S.No", bold),
+        p("Description of Goods", bold),
+        p("HSN/SAC<br/>Code", bold),
+        p("Qty.", bold),
+        p("Unit", bold),
+        p("Rate", bold),
+        p("Amount", bold)
+    ]]
+
+    for index, item in enumerate(invoice.items, 1):
+        items_data.append([
+            p(str(index), normal),
+            p(item.part_name, normal),
+            p(item.hsn_code or "", normal),
+            p(f"{item.quantity:.2f}", normal),
+            p(item.unit, normal),
+            p(f"{item.unit_price:.2f}", normal),
+            p(f"{item.amount:.2f}", normal),
+        ])
+
+    items_table = Table(items_data, colWidths=[0.4*inch, 2.8*inch, 0.8*inch, 0.5*inch, 0.5*inch, 0.9*inch, 1.1*inch], repeatRows=1, style=TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.black),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (1, 1), (1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    elements.append(items_table)
+    elements.append(Spacer(1, 0.05*inch))
+
+    # ========== SUMMARY ==========
+    summary_data = []
+    summary_data.append([p("", normal), p(f"{invoice.subtotal:.2f}", ParagraphStyle("Sum", parent=normal, alignment=TA_RIGHT))])
+
+    if not is_quotation:
+        # Add tax lines based on tax_type
+        if invoice.tax_type == "igst" and invoice.igst_amount > 0:
+            summary_data.append([p("Add :", normal), p("", normal)])
+            summary_data.append([p("Add : IGST  18%", normal), p(f"{invoice.igst_amount:.2f}", ParagraphStyle("Tax", parent=normal, alignment=TA_RIGHT))])
+        elif invoice.cgst_amount > 0 or invoice.sgst_amount > 0:
+            summary_data.append([p("Add :", normal), p("", normal)])
+            if invoice.cgst_amount > 0:
+                summary_data.append([p(f"Add : CGST  9%", normal), p(f"{invoice.cgst_amount:.2f}", ParagraphStyle("Tax", parent=normal, alignment=TA_RIGHT))])
+            if invoice.sgst_amount > 0:
+                summary_data.append([p(f"Add : SGST  9%", normal), p(f"{invoice.sgst_amount:.2f}", ParagraphStyle("Tax", parent=normal, alignment=TA_RIGHT))])
+
+    # Add spacing row before grand total
+    summary_data.append([p("", normal), p("", normal)])
+    summary_data.append([
+        p("AMOUNT IN WORDS :", bold),
+        p("GRAND TOTAL", ParagraphStyle("GT", parent=bold, alignment=TA_RIGHT))
+    ])
+    summary_data.append([
+        p(_amount_in_words(invoice.total_amount), normal),
+        p(f"{invoice.total_amount:.0f}", ParagraphStyle("GTV", parent=bold, fontSize=11, alignment=TA_RIGHT))
+    ])
+
+    summary_table = Table(summary_data, colWidths=[5.5*inch, 2*inch], style=TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.black),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    elements.append(summary_table)
+
+    if not is_quotation:
+        elements.append(Spacer(1, 0.1*inch))
+
+        # ========== BANK DETAILS & TERMS ==========
+        bank_text = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.<br/>IFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
+
+        terms_text = """E. & O.E<br/>
+1. Goods once sold will not be taken back or exchanged.<br/>
+2. Interest 18& p.a. will be charged if<br/>
+the payment is not made with in the stipulated<br/>
+time"""
+
+        footer_data = [
+            [p("Bank Details :", bold), p("Terms & Conditions", bold), p("Receiver's Signature :", bold)],
+            [p(bank_text, small), p(terms_text, small), p("", normal)],
+            [p("", normal), p("", normal), p("", normal)],
+            [p("", normal), p("", normal), p("For JAGANNATH ENTERPRISES", bold)],
+            [p("", normal), p("", normal), p("", normal)],
+            [p("", normal), p("", normal), p("Authorised<br/>Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_CENTER))],
+        ]
+
+        footer_table = Table(footer_data, colWidths=[2.5*inch, 2.5*inch, 2.5*inch], style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.black),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 15),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("VALIGN", (2, 3), (2, 5), "MIDDLE"),
+            ("ALIGN", (2, 3), (2, 5), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
-        elements.extend([Spacer(1, 0.15 * inch), signature_table])
-    else:
-        # Quotation - NO Bank Details, NO Terms, simpler signature
-        signature_table = Table([
-            [p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_RIGHT))],
-            [p("", normal)],
-            [p("Authorised Signatory", ParagraphStyle("Sig", parent=normal, alignment=TA_RIGHT))],
-        ], colWidths=[7.45 * inch], style=TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-            ("TOPPADDING", (0, 0), (-1, -1), 15),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        elements.extend([Spacer(1, 0.25 * inch), signature_table])
+
+        elements.append(footer_table)
 
     def set_metadata(canvas, document):
-        canvas.setTitle(f"{copy_text} {invoice.invoice_number}")
-        canvas.setAuthor(str(settings.COMPANY_NAME))
-        canvas.setSubject(f"{copy_text} for {customer.name}")
-        canvas.setCreator("Jagannath Enterprises Invoice System")
+        canvas.setTitle(f"{'Quotation' if is_quotation else 'Invoice'} {invoice.invoice_number}")
+        canvas.setAuthor(settings.COMPANY_NAME)
 
     doc.build(elements, onFirstPage=set_metadata, onLaterPages=set_metadata)
     return filepath

@@ -9,6 +9,8 @@ export interface Customer {
   state?: string
   pincode?: string
   gstin?: string
+  customer_type?: string  // Boiled, Raw Rice
+  missionary_type?: string
   created_at: string
   updated_at?: string
 }
@@ -46,6 +48,7 @@ export interface Invoice {
   invoice_number: string
   invoice_type: InvoiceType
   status: InvoiceStatus
+  tax_type: string  // cgst_sgst or igst
   customer_id: number
   customer: {
     id: number
@@ -76,6 +79,7 @@ export interface Invoice {
 export interface CreateInvoiceData {
   customer_id: number
   invoice_type: InvoiceType
+  tax_type: string  // cgst_sgst or igst
   invoice_date?: string
   due_date?: string
   discount_percentage?: number

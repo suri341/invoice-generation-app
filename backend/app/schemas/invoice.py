@@ -33,6 +33,7 @@ class InvoiceItemResponse(BaseModel):
 class InvoiceCreate(BaseModel):
     customer_id: int
     invoice_type: InvoiceType = InvoiceType.QUOTATION
+    tax_type: str = Field(default="cgst_sgst", max_length=20)  # cgst_sgst or igst
     invoice_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     discount_percentage: float = Field(default=0.0, ge=0, le=100)
@@ -73,6 +74,7 @@ class InvoiceResponse(BaseModel):
     invoice_number: str
     invoice_type: InvoiceType
     status: InvoiceStatus
+    tax_type: str
     customer_id: int
     customer: CustomerBrief
     source_quotation: Optional[SourceQuotationBrief] = None

@@ -23,6 +23,8 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
     state: '',
     pincode: '',
     gstin: '',
+    customer_type: '',
+    missionary_type: '',
   })
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
         state: customer.state || '',
         pincode: customer.pincode || '',
         gstin: customer.gstin || '',
+        customer_type: customer.customer_type || '',
+        missionary_type: customer.missionary_type || '',
       })
     } else {
       setFormData({
@@ -49,6 +53,8 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
         state: '',
         pincode: '',
         gstin: '',
+        customer_type: '',
+        missionary_type: '',
       })
     }
   }, [customer, isOpen])
@@ -171,6 +177,32 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
                 value={formData.gstin}
                 onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
                 placeholder="GST Number"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Customer Type
+              </label>
+              <select
+                value={formData.customer_type}
+                onChange={(e) => setFormData({ ...formData, customer_type: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Type</option>
+                <option value="Boiled">Boiled</option>
+                <option value="Raw Rice">Raw Rice</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Missionary Type
+              </label>
+              <Input
+                value={formData.missionary_type}
+                onChange={(e) => setFormData({ ...formData, missionary_type: e.target.value })}
+                placeholder="Missionary information"
               />
             </div>
           </div>

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import init_db
-from app.api import customers, parts, invoices
+from app.api import customers, parts, invoices, reports
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +52,7 @@ async def health_check():
 app.include_router(customers.router, prefix="/api/customers", tags=["Customers"])
 app.include_router(parts.router, prefix="/api/parts", tags=["Parts"])
 app.include_router(invoices.router, prefix="/api/invoices", tags=["Invoices"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 
 
 @app.exception_handler(Exception)

@@ -21,6 +21,7 @@ class Invoice(Base):
     invoice_number = Column(String(50), unique=True, nullable=False, index=True)
     invoice_type = Column(SQLEnum(InvoiceType), default=InvoiceType.INVOICE)
     status = Column(SQLEnum(InvoiceStatus), default=InvoiceStatus.COMPLETED)
+    tax_type = Column(String(20), default="cgst_sgst")  # cgst_sgst or igst
 
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     source_quotation_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)

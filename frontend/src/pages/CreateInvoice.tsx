@@ -15,9 +15,11 @@ export default function CreateInvoice() {
   const editingId = invoiceId ? Number(invoiceId) : null
   const [invoiceType] = useState<'quotation'>('quotation')
   const [customerId, setCustomerId] = useState<number | null>(null)
+  const [taxType, setTaxType] = useState<string>('cgst_sgst')  // cgst_sgst or igst
   const [discountPercentage, setDiscountPercentage] = useState(0)
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<Omit<InvoiceItem, 'id' | 'amount'>[]>([{
+    part_id: undefined,
     part_name: '',
     description: '',
     hsn_code: '',
@@ -95,13 +97,24 @@ export default function CreateInvoice() {
     return items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
   }
 
+  const calculateTax = () => {
+    const subtotal = calculateSubtotal()
+    const discountAmount = (subtotal * discountPercentage) / 100
+    const subtotalAfterDiscount = subtotal - discountAmount
+
+    if (taxType === 'igst') {
+      return { cgst: 0, sgst: 0, igst: (subtotalAfterDiscount * 18) / 100 }
+    } else {
+      return { cgst: (subtotalAfterDiscount * 9) / 100, sgst: (subtotalAfterDiscount * 9) / 100, igst: 0 }
+    }
+  }
+
   const calculateTotal = () => {
     const subtotal = calculateSubtotal()
     const discountAmount = (subtotal * discountPercentage) / 100
     const subtotalAfterDiscount = subtotal - discountAmount
-    const cgst = (subtotalAfterDiscount * 9) / 100
-    const sgst = (subtotalAfterDiscount * 9) / 100
-    return subtotalAfterDiscount + cgst + sgst
+    const taxes = calculateTax()
+    return subtotalAfterDiscount + taxes.cgst + taxes.sgst + taxes.igst
   }
 
   const handleSubmit = () => {
@@ -110,9 +123,17 @@ export default function CreateInvoice() {
       return
     }
 
+    // Check that all items have a part selected
+    const invalidItems = items.filter(item => !item.part_id || !item.part_name)
+    if (invalidItems.length > 0) {
+      alert('Please select a part for all items')
+      return
+    }
+
     const data: CreateInvoiceData = {
       customer_id: customerId,
       invoice_type: invoiceType,
+      tax_type: taxType,
       discount_percentage: discountPercentage,
       notes,
       items,
@@ -151,6 +172,19 @@ export default function CreateInvoice() {
                         {customer.name} {customer.company_name ? `(${customer.company_name})` : ''}
                       </option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tax Type *
+                  </label>
+                  <select
+                    value={taxType}
+                    onChange={(e) => setTaxType(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="cgst_sgst">CGST + SGST (9% + 9% = 18%)</option>
+                    <option value="igst">IGST (18%)</option>
                   </select>
                 </div>
               </div>
@@ -208,8 +242,10 @@ export default function CreateInvoice() {
                         </label>
                         <Input
                           value={item.part_name}
-                          onChange={(e) => updateItem(index, 'part_name', e.target.value)}
-                          placeholder="Enter part name"
+                          readOnly
+                          disabled
+                          placeholder="Select a part from dropdown above"
+                          className="bg-gray-100 cursor-not-allowed"
                         />
                       </div>
 
@@ -327,15 +363,23 @@ export default function CreateInvoice() {
                 </div>
               )}
 
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">CGST (9%):</span>
-                <span>{formatCurrency(((calculateSubtotal() - (calculateSubtotal() * discountPercentage) / 100) * 9) / 100)}</span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">SGST (9%):</span>
-                <span>{formatCurrency(((calculateSubtotal() - (calculateSubtotal() * discountPercentage) / 100) * 9) / 100)}</span>
-              </div>
+              {taxType === 'cgst_sgst' ? (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">CGST (9%):</span>
+                    <span>{formatCurrency(calculateTax().cgst)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">SGST (9%):</span>
+                    <span>{formatCurrency(calculateTax().sgst)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">IGST (18%):</span>
+                  <span>{formatCurrency(calculateTax().igst)}</span>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-gray-200">
                 <div className="flex justify-between">
