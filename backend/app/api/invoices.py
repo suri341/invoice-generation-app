@@ -9,6 +9,7 @@ from app.models.customer import Customer
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceResponse
 from app.services.invoice_service import InvoiceService
 from app.utils.pdf_generator import generate_invoice_pdf
+from app.utils.pdf_generator_backup_old import generate_invoice_pdf as generate_quotation_pdf
 import os
 
 router = APIRouter()
@@ -130,7 +131,8 @@ def download_invoice_pdf(invoice_id: int, db: Session = Depends(get_db)):
             detail="Invoice not found"
         )
 
-    pdf_path = generate_invoice_pdf(invoice)
+    pdf_generator = generate_quotation_pdf if invoice.invoice_type == InvoiceType.QUOTATION else generate_invoice_pdf
+    pdf_path = pdf_generator(invoice)
 
     if not os.path.exists(pdf_path):
         raise HTTPException(

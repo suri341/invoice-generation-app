@@ -65,7 +65,8 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     title = ParagraphStyle("Title", parent=normal, fontSize=14, fontName="Helvetica-Bold", alignment=TA_CENTER)
 
     def p(text, style=normal):
-        return Paragraph(escape(str(text)).replace("\n", "<br/>"), style)
+        escaped_text = escape(str(text)).replace("&lt;br/&gt;", "<br/>")
+        return Paragraph(escaped_text.replace("\n", "<br/>"), style)
 
     elements = []
     customer = invoice.customer
