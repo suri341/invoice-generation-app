@@ -31,6 +31,10 @@ def init_db():
             connection.execute(text(
                 "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source_quotation_id INTEGER"
             ))
+            connection.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS tph VARCHAR(100)"))
+            connection.execute(text(
+                "ALTER TABLE parts ADD COLUMN IF NOT EXISTS stock_quantity DOUBLE PRECISION NOT NULL DEFAULT 0"
+            ))
             connection.execute(text("""
                 DO $$
                 BEGIN

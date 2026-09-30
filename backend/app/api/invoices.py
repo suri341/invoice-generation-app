@@ -73,7 +73,10 @@ def convert_quotation_to_invoice(invoice_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quotation not found")
     if quotation.invoice_type != InvoiceType.QUOTATION:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only quotations can be converted")
-    return InvoiceService(db).convert_quotation_to_invoice(quotation)
+    try:
+        return InvoiceService(db).convert_quotation_to_invoice(quotation)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
@@ -117,6 +120,8 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     db.query(Invoice).filter(Invoice.source_quotation_id == invoice_id).update(
         {Invoice.source_quotation_id: None}, synchronize_session=False
     )
+    if invoice.invoice_type == InvoiceType.INVOICE:
+        InvoiceService(db).adjust_stock(invoice.items, 1)
     db.delete(invoice)
     db.commit()
     return None

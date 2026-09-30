@@ -11,6 +11,7 @@ export interface Customer {
   gstin?: string
   customer_type?: string  // Boiled, Raw Rice
   missionary_type?: string
+  tph?: string
   created_at: string
   updated_at?: string
 }
@@ -24,6 +25,7 @@ export interface Part {
   hsn_code?: string
   price: number
   image_url?: string
+  stock_quantity: number
   created_at: string
   updated_at?: string
 }

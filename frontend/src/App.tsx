@@ -5,6 +5,7 @@ import Customers from './pages/Customers'
 import Parts from './pages/Parts'
 import Invoices from './pages/Invoices'
 import CreateInvoice from './pages/CreateInvoice'
+import Stock from './pages/Stock'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/parts" element={<Parts />} />
+          <Route path="/stock" element={<Stock />} />
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/invoices/create" element={<CreateInvoice />} />
           <Route path="/invoices/:invoiceId/edit" element={<CreateInvoice />} />

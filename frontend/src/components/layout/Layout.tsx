@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, Users, Package, LayoutDashboard, Plus } from 'lucide-react'
+import { FileText, Users, Package, LayoutDashboard, Plus, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface LayoutProps {
@@ -13,6 +13,7 @@ export default function Layout({ children }: LayoutProps) {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/customers', label: 'Customers', icon: Users },
     { path: '/parts', label: 'Parts', icon: Package },
+    { path: '/stock', label: 'Parts Stock', icon: Boxes },
     { path: '/invoices', label: 'Invoices', icon: FileText },
   ]
 
@@ -27,6 +28,7 @@ export default function Layout({ children }: LayoutProps) {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-8">
             <Link to="/" className="flex items-center space-x-2">
+              <img src="/logo.png" alt="Jagannath Enterprises logo" className="h-10 w-auto" />
               <FileText className="h-8 w-8 text-blue-600" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Jagannath Enterprises</h1>
@@ -58,7 +60,7 @@ export default function Layout({ children }: LayoutProps) {
           <Link to="/invoices/create">
             <Button className="flex items-center space-x-2">
               <Plus className="h-4 w-4" />
-              <span>New Invoice</span>
+              <span>New Quotation</span>
             </Button>
           </Link>
         </div>

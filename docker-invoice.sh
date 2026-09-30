@@ -75,7 +75,7 @@ apply_stack() {
     -e POSTGRES_USER=postgres \
     -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}" \
     -e POSTGRES_DB=invoice_db \
-    -p "127.0.0.1:${POSTGRES_PORT:-5432}:5432" \
+    -p "127.0.0.1:${POSTGRES_PORT:-5433}:5432" \
     -v "$POSTGRES_VOLUME:/var/lib/postgresql/data" \
     "$POSTGRES_IMAGE" >/dev/null
   wait_for_postgres

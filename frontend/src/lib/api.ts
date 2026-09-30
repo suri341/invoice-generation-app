@@ -25,6 +25,9 @@ export const customersApi = {
 
   delete: (id: number) =>
     api.delete(`/api/customers/${id}`),
+
+  exportExcel: () =>
+    api.get('/api/customers/export', { responseType: 'blob' }),
 }
 
 export const partsApi = {
@@ -37,14 +40,20 @@ export const partsApi = {
   getCategories: () =>
     api.get<string[]>('/api/parts/categories'),
 
-  create: (data: Omit<Part, 'id' | 'created_at' | 'updated_at'>) =>
+  create: (data: Omit<Part, 'id' | 'created_at' | 'updated_at' | 'stock_quantity'>) =>
     api.post<Part>('/api/parts/', data),
 
   update: (id: number, data: Partial<Part>) =>
     api.put<Part>(`/api/parts/${id}`, data),
 
+  updateStock: (id: number, stock_quantity: number) =>
+    api.put<Part>(`/api/parts/${id}/stock`, { stock_quantity }),
+
   delete: (id: number) =>
     api.delete(`/api/parts/${id}`),
+
+  exportExcel: () =>
+    api.get('/api/parts/export', { responseType: 'blob' }),
 }
 
 export const invoicesApi = {

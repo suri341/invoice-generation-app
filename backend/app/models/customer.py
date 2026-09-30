@@ -19,6 +19,7 @@ class Customer(Base):
     gstin = Column(String(15), unique=True, index=True)
     customer_type = Column(String(50))  # Boiled, Raw Rice
     missionary_type = Column(String(100))  # Missionary information
+    tph = Column(String(100))
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

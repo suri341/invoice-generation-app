@@ -14,6 +14,7 @@ class Part(Base):
     hsn_code = Column(String(20))  # HSN code for GST
     price = Column(Float, nullable=False)
     image_url = Column(String(500))  # URL to part image/symbol
+    stock_quantity = Column(Float, nullable=False, default=0.0, server_default="0")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

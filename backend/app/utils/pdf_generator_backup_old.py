@@ -7,10 +7,21 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.config import settings
 from app.models.invoice import Invoice
+
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+LOGO_PATH = os.path.join(ASSETS_DIR, "logo.png")
+PRODUCTS_DIR = os.path.join(ASSETS_DIR, "products")
+
+
+def _scaled_image(path: str, max_width: float, max_height: float) -> Image:
+    image = Image(path)
+    ratio = min(max_width / image.imageWidth, max_height / image.imageHeight)
+    image.drawWidth, image.drawHeight = image.imageWidth * ratio, image.imageHeight * ratio
+    return image
 
 
 ONES = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine")
@@ -92,9 +103,11 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     if settings.GSTIN:
         company_lines.append(p(f"GSTIN : {settings.GSTIN}", ParagraphStyle("CompanyGstin", parent=normal, alignment=TA_CENTER, fontName="Helvetica-Bold")))
 
+    logo = _scaled_image(LOGO_PATH, 1.15 * inch, 0.9 * inch) if os.path.exists(LOGO_PATH) else ""
     elements = [
-        Table([[company_lines]], colWidths=[7.45 * inch], style=TableStyle([
+        Table([[logo, company_lines, ""]], colWidths=[1.35 * inch, 4.75 * inch, 1.35 * inch], style=TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E8F1F3")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "CENTER"),
             ("BOX", (0, 0), (-1, -1), 1.2, teal), ("TOPPADDING", (0, 0), (-1, -1), 10),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ])),
@@ -211,7 +224,8 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
 
         elements.append(Table(quotation_data, colWidths=[3.7 * inch, 3.75 * inch], style=TableStyle([
             ("BACKGROUND", (0, 0), (0, 0), navy), ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+            ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#B7C8CD")),
+            ("LINEAFTER", (0, 0), (0, -1), 0.4, colors.HexColor("#B7C8CD")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
@@ -227,7 +241,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         items_data.append([p(str(index), normal), p(description, normal), p(hsn, normal), p(f"{item.quantity:.2f}", normal), p(item.unit, normal), p(f"{item.unit_price:,.2f}", normal), p(f"{item.amount:,.2f}", normal)])
     items_table = Table(items_data, colWidths=[0.42 * inch, 2.45 * inch, 0.78 * inch, 0.55 * inch, 0.62 * inch, 1.25 * inch, 1.38 * inch], repeatRows=1, style=TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), navy), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#AABCC1")), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, pale]),
+        ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#AABCC1")), ("LINEAFTER", (0, 0), (-2, -1), 0.35, colors.HexColor("#AABCC1")),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("ALIGN", (1, 1), (1, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
@@ -326,6 +340,16 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ]))
         elements.extend([Spacer(1, 0.25 * inch), signature_table])
+
+        product_images = [
+            _scaled_image(os.path.join(PRODUCTS_DIR, name), 1.1 * inch, 0.85 * inch)
+            for name in sorted(os.listdir(PRODUCTS_DIR))
+        ] if os.path.isdir(PRODUCTS_DIR) else []
+        if product_images:
+            elements.extend([Spacer(1, 0.25 * inch), Table(
+                [product_images], colWidths=[7.45 * inch / len(product_images)] * len(product_images),
+                style=TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
+            )])
 
     def set_metadata(canvas, document):
         canvas.setTitle(f"{copy_text} {invoice.invoice_number}")

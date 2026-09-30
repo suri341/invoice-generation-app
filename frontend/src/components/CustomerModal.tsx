@@ -25,6 +25,7 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
     gstin: '',
     customer_type: '',
     missionary_type: '',
+    tph: '',
   })
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
         gstin: customer.gstin || '',
         customer_type: customer.customer_type || '',
         missionary_type: customer.missionary_type || '',
+        tph: customer.tph || '',
       })
     } else {
       setFormData({
@@ -55,6 +57,7 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
         gstin: '',
         customer_type: '',
         missionary_type: '',
+        tph: '',
       })
     }
   }, [customer, isOpen])
@@ -203,6 +206,17 @@ export default function CustomerModal({ isOpen, onClose, onSave, customer, title
                 value={formData.missionary_type}
                 onChange={(e) => setFormData({ ...formData, missionary_type: e.target.value })}
                 placeholder="Missionary information"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                TPH
+              </label>
+              <Input
+                value={formData.tph}
+                onChange={(e) => setFormData({ ...formData, tph: e.target.value })}
+                placeholder="TPH information"
               />
             </div>
           </div>

@@ -4,8 +4,27 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.customer import Customer
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerResponse
+from app.utils.excel import xlsx_response
 
 router = APIRouter()
+
+
+@router.get("/export")
+def export_customers(db: Session = Depends(get_db)):
+    customers = db.query(Customer).order_by(Customer.name).all()
+    headers = [
+        "ID", "Name", "Company Name", "Email", "Phone", "Address", "City", "State", "Pincode",
+        "GSTIN", "Customer Type", "Missionary Type", "TPH", "Created At",
+    ]
+    rows = [
+        [
+            c.id, c.name, c.company_name, c.email, c.phone, c.address, c.city, c.state, c.pincode,
+            c.gstin, c.customer_type, c.missionary_type, c.tph,
+            c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else None,
+        ]
+        for c in customers
+    ]
+    return xlsx_response("Customers", headers, rows)
 
 
 @router.get("/", response_model=List[CustomerResponse])

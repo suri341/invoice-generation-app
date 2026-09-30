@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -60,12 +60,17 @@ export default function Invoices() {
     mutationFn: (id: number) => invoicesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['parts'] })
     },
   })
 
   const convertMutation = useMutation({
     mutationFn: (id: number) => invoicesApi.convert(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['parts'] })
+    },
+    onError: (error: any) => alert(error?.response?.data?.detail || 'Failed to convert quotation to invoice'),
   })
 
   const applyFilters = () => {
@@ -114,6 +119,68 @@ export default function Invoices() {
       quotationInvoiceMap.get(quoId)?.push(inv)
     }
   })
+
+  const quotationIds = new Set(invoices?.filter(inv => inv.invoice_type === 'quotation').map(inv => inv.id))
+  // Invoices whose quotation was deleted have no parent row to sit under
+  const isStandaloneInvoice = (inv: Invoice) =>
+    inv.invoice_type === 'invoice' && !(inv.source_quotation && quotationIds.has(inv.source_quotation.id))
+
+  const renderInvoiceRow = (invoice: Invoice, nested: boolean) => (
+    <tr key={invoice.id} id={`invoice-${invoice.id}`} className="border-b border-gray-100 hover:bg-purple-50 bg-purple-50/30">
+      <td className={`py-2 px-3 font-medium text-gray-700 ${nested ? 'pl-8' : ''}`}>
+        {nested && <span className="mr-2 text-gray-400">└─</span>}
+        {invoice.invoice_number}
+      </td>
+      <td className="py-2 px-3">
+        <p className="font-medium text-gray-900">{invoice.customer.name}</p>
+        {invoice.customer.company_name && (
+          <p className="text-xs text-gray-500">{invoice.customer.company_name}</p>
+        )}
+      </td>
+      <td className="py-2 px-3">
+        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">
+          TAX INVOICE
+        </span>
+      </td>
+      <td className="py-2 px-3 text-gray-600">
+        {formatDate(invoice.invoice_date)}
+      </td>
+      <td className="py-2 px-3 text-right font-semibold text-gray-900">
+        {formatCurrency(invoice.total_amount)}
+      </td>
+      <td className="py-2 px-3 text-right">
+        <div className="flex justify-end space-x-1">
+          <Button size="sm" variant="outline" title="View" onClick={() => handlePreview(invoice)} className="h-7 w-7 p-0">
+            <Eye className="h-3 w-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            title="Download"
+            onClick={() => downloadMutation.mutate(invoice.id)}
+            disabled={downloadMutation.isPending}
+            className="h-7 w-7 p-0"
+          >
+            <Download className="h-3 w-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            title="Delete"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to delete this invoice?')) {
+                deleteMutation.mutate(invoice.id)
+              }
+            }}
+            disabled={deleteMutation.isPending}
+            className="h-7 w-7 p-0"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
 
   return (
     <div className="space-y-6">
@@ -225,11 +292,13 @@ export default function Invoices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.filter(inv => inv.invoice_type === 'quotation').map((quotation: Invoice) => {
-                    const convertedInvoices = quotationInvoiceMap.get(quotation.id) || []
+                  {typeFilter === 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'invoice').map((invoice: Invoice) => renderInvoiceRow(invoice, false))}
+                  {typeFilter !== 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'quotation' || (typeFilter === '' && isStandaloneInvoice(inv))).map((quotation: Invoice) => {
+                    if (quotation.invoice_type === 'invoice') return renderInvoiceRow(quotation, false)
+                    const convertedInvoices = typeFilter === 'quotation' ? [] : quotationInvoiceMap.get(quotation.id) || []
                     return (
-                      <>
-                        <tr key={quotation.id} id={`invoice-${quotation.id}`} className="border-b border-gray-100 hover:bg-amber-50">
+                      <Fragment key={quotation.id}>
+                        <tr id={`invoice-${quotation.id}`} className="border-b border-gray-100 hover:bg-amber-50">
                           <td className="py-2 px-3 font-medium text-gray-900">
                             {quotation.invoice_number}
                           </td>
@@ -297,63 +366,8 @@ export default function Invoices() {
                             </div>
                           </td>
                         </tr>
-                        {convertedInvoices.map((invoice: Invoice) => (
-                          <tr key={invoice.id} id={`invoice-${invoice.id}`} className="border-b border-gray-100 hover:bg-purple-50 bg-purple-50/30">
-                            <td className="py-2 px-3 pl-8 font-medium text-gray-700">
-                              <span className="mr-2 text-gray-400">└─</span>
-                              {invoice.invoice_number}
-                            </td>
-                            <td className="py-2 px-3">
-                              <p className="font-medium text-gray-900">{invoice.customer.name}</p>
-                              {invoice.customer.company_name && (
-                                <p className="text-xs text-gray-500">{invoice.customer.company_name}</p>
-                              )}
-                            </td>
-                            <td className="py-2 px-3">
-                              <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">
-                                TAX INVOICE
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-gray-600">
-                              {formatDate(invoice.invoice_date)}
-                            </td>
-                            <td className="py-2 px-3 text-right font-semibold text-gray-900">
-                              {formatCurrency(invoice.total_amount)}
-                            </td>
-                            <td className="py-2 px-3 text-right">
-                              <div className="flex justify-end space-x-1">
-                                <Button size="sm" variant="outline" title="View" onClick={() => handlePreview(invoice)} className="h-7 w-7 p-0">
-                                  <Eye className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  title="Download"
-                                  onClick={() => downloadMutation.mutate(invoice.id)}
-                                  disabled={downloadMutation.isPending}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <Download className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  title="Delete"
-                                  onClick={() => {
-                                    if (window.confirm('Are you sure you want to delete this invoice?')) {
-                                      deleteMutation.mutate(invoice.id)
-                                    }
-                                  }}
-                                  disabled={deleteMutation.isPending}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </>
+                        {convertedInvoices.map((invoice: Invoice) => renderInvoiceRow(invoice, true))}
+                      </Fragment>
                     )
                   })}
                 </tbody>

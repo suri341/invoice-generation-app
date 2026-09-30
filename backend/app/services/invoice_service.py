@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.models.invoice import Invoice, InvoiceItem, InvoiceType
+from app.models.part import Part
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
 from app.config import settings
 
@@ -10,31 +11,6 @@ class InvoiceService:
         self.db = db
 
     def generate_invoice_number(self, invoice_type: str) -> str:
-        if invoice_type == InvoiceType.INVOICE.value:
-            now = datetime.now()
-            fiscal_start_year = now.year if now.month >= 4 else now.year - 1
-            fiscal_year = f"{fiscal_start_year % 100:02d}-{(fiscal_start_year + 1) % 100:02d}"
-            fiscal_start = datetime(fiscal_start_year, 4, 1)
-            fiscal_end = datetime(fiscal_start_year + 1, 4, 1)
-            existing_invoices = (
-                self.db.query(Invoice.invoice_number)
-                .filter(
-                    Invoice.invoice_type == InvoiceType.INVOICE,
-                    Invoice.invoice_date >= fiscal_start,
-                    Invoice.invoice_date < fiscal_end,
-                )
-                .all()
-            )
-            existing_numbers = [number for (number,) in existing_invoices]
-            numbered_invoices = [
-                int(number.split("_", 1)[0])
-                for number in existing_numbers
-                if number.endswith(f"_{fiscal_year}")
-                and number.split("_", 1)[0].isdigit()
-            ]
-            next_number = max(len(existing_numbers), max(numbered_invoices, default=0)) + 1
-            return f"{next_number}_{fiscal_year}"
-
         prefix = "INV" if invoice_type == "invoice" else "QUO"
         year = datetime.now().year
         month = datetime.now().month
@@ -178,6 +154,20 @@ class InvoiceService:
         return invoice
 
     def convert_quotation_to_invoice(self, quotation: Invoice) -> Invoice:
+        required = {}
+        for item in quotation.items:
+            if item.part_id:
+                required[item.part_id] = required.get(item.part_id, 0) + item.quantity
+        shortages = []
+        for part_id, quantity in required.items():
+            part = self.db.query(Part).filter(Part.id == part_id).first()
+            available = (part.stock_quantity or 0) if part else 0
+            if available < quantity:
+                name = part.name if part else f"Part #{part_id}"
+                shortages.append(f"{name} (required {quantity:g}, in stock {available:g})")
+        if shortages:
+            raise ValueError("Stock is not available for: " + "; ".join(shortages))
+
         invoice = Invoice(
             invoice_number=self.generate_invoice_number(InvoiceType.INVOICE.value),
             invoice_type=InvoiceType.INVOICE,
@@ -206,10 +196,18 @@ class InvoiceService:
         amounts = self.calculate_amounts(invoice.items, invoice.discount_percentage, invoice.tax_type)
         for field, value in amounts.items():
             setattr(invoice, field, value)
+        self.adjust_stock(invoice.items, -1)
         self.db.add(invoice)
         self.db.commit()
         self.db.refresh(invoice)
         return invoice
+
+    def adjust_stock(self, items, direction: int) -> None:
+        for item in items:
+            if item.part_id:
+                part = self.db.query(Part).filter(Part.id == item.part_id).first()
+                if part:
+                    part.stock_quantity = (part.stock_quantity or 0) + direction * item.quantity
 
     def get_default_terms(self) -> str:
         """Default terms matching reference invoice.pdf exactly"""

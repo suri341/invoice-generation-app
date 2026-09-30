@@ -56,7 +56,7 @@ export default function PartModal({ isOpen, onClose, onSave, part, title }: Part
 
   const categories = ['Rubber rolls', 'Sieves', 'Stones', 'Bearings', 'Flanges', 'Feed screw', 'Shafts', 'Aspiration hose', 'Belts', 'Pulley', 'Pneumatic system', 'Electric item', 'Motor', 'Nut bolts']
 
-  const units = ['Piece', 'Kg', 'Meter', 'Square Meter', 'Set', 'Liter']
+  const units = ['Piece', 'Kg', 'Meter', 'Square Meter', 'Square Feet', 'Set', 'Liter']
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

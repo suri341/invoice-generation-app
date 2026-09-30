@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { partsApi } from '@/lib/api'
-import { Plus, Search, Edit, Trash2 } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
+import { Plus, Search, Edit, Trash2, FileSpreadsheet } from 'lucide-react'
+import { downloadBlob, formatCurrency } from '@/lib/utils'
 import PartModal from '@/components/PartModal'
 import type { Part } from '@/types'
 
@@ -21,6 +21,14 @@ export default function Parts() {
   const { data: parts, isLoading } = useQuery({
     queryKey: ['parts', search, selectedCategory],
     queryFn: () => partsApi.getAll({ search, category: selectedCategory || undefined }).then(res => res.data),
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: () => partsApi.exportExcel(),
+    onSuccess: (response) => {
+      downloadBlob(response.data, `parts_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    },
+    onError: () => alert('Failed to download parts Excel report'),
   })
 
   const createMutation = useMutation({
@@ -81,10 +89,16 @@ export default function Parts() {
           <h2 className="text-3xl font-bold text-gray-900">Rice Mill Parts</h2>
           <p className="text-gray-500 mt-1">Manage your parts inventory</p>
         </div>
-        <Button className="flex items-center space-x-2" onClick={handleAddNew}>
-          <Plus className="h-4 w-4" />
-          <span>Add Part</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="flex items-center space-x-2" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>Download Excel</span>
+          </Button>
+          <Button className="flex items-center space-x-2" onClick={handleAddNew}>
+            <Plus className="h-4 w-4" />
+            <span>Add Part</span>
+          </Button>
+        </div>
       </div>
 
       <Card>

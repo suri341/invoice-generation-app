@@ -7,10 +7,16 @@ import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDo
 import { formatCurrency } from '@/lib/utils'
 import axios from 'axios'
 
+// datetime-local inputs expect local time; toISOString() is UTC and shifted the range by the IST offset
+const toLocalInput = (date: Date) => {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export default function Dashboard() {
   // Initialize with "None" filter to show all data by default
-  const veryOldDate = new Date('2020-01-01').toISOString().slice(0, 16)
-  const farFutureDate = new Date('2099-12-31').toISOString().slice(0, 16)
+  const veryOldDate = toLocalInput(new Date(2020, 0, 1))
+  const farFutureDate = toLocalInput(new Date(2099, 11, 31, 23, 59))
   const [tempStartDate, setTempStartDate] = useState(veryOldDate)
   const [tempEndDate, setTempEndDate] = useState(farFutureDate)
   const [startDate, setStartDate] = useState(veryOldDate)
@@ -18,7 +24,8 @@ export default function Dashboard() {
   const [showRevenue, setShowRevenue] = useState(false)
   const [selectedRange, setSelectedRange] = useState('none')
   const [showCustom, setShowCustom] = useState(false)
-  const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(endDate).toISOString() }
+  // End minute is inclusive
+  const dateRange = { date_from: new Date(startDate).toISOString(), date_to: new Date(new Date(endDate).getTime() + 59999).toISOString() }
 
   // Monthly report state
   const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1)
@@ -49,10 +56,8 @@ export default function Dashboard() {
 
     // Handle "None" - show all data
     if (range === 'none') {
-      const veryOldDate = new Date('2020-01-01')
-      const farFutureDate = new Date('2099-12-31')
-      const startStr = veryOldDate.toISOString().slice(0, 16)
-      const endStr = farFutureDate.toISOString().slice(0, 16)
+      const startStr = toLocalInput(new Date(2020, 0, 1))
+      const endStr = toLocalInput(new Date(2099, 11, 31, 23, 59))
       setTempStartDate(startStr)
       setTempEndDate(endStr)
       setStartDate(startStr)
@@ -83,8 +88,8 @@ export default function Dashboard() {
       end.setHours(23, 59, 59, 999) // End of current day
     }
 
-    const startStr = start.toISOString().slice(0, 16)
-    const endStr = end.toISOString().slice(0, 16)
+    const startStr = toLocalInput(start)
+    const endStr = toLocalInput(end)
 
     // Immediately apply filters like AWS CloudWatch (no need to click Apply)
     setTempStartDate(startStr)
@@ -102,8 +107,8 @@ export default function Dashboard() {
 
   const resetFilters = () => {
     // Reset to "None" filter (show all data)
-    const veryOldDate = new Date('2020-01-01').toISOString().slice(0, 16)
-    const farFutureDate = new Date('2099-12-31').toISOString().slice(0, 16)
+    const veryOldDate = toLocalInput(new Date(2020, 0, 1))
+    const farFutureDate = toLocalInput(new Date(2099, 11, 31, 23, 59))
     setTempStartDate(veryOldDate)
     setTempEndDate(farFutureDate)
     setStartDate(veryOldDate)
@@ -114,13 +119,19 @@ export default function Dashboard() {
 
   const downloadMonthlyReport = async () => {
     try {
-      let url = '/api/reports/monthly?'
-
+      // Ranges are built in local time so documents near midnight IST land in the right period
+      let from: Date
+      let to: Date
       if (reportCustom && reportStartDate && reportEndDate) {
-        url += `date_from=${new Date(reportStartDate).toISOString()}&date_to=${new Date(reportEndDate).toISOString()}`
+        const [sy, sm, sd] = reportStartDate.split('-').map(Number)
+        const [ey, em, ed] = reportEndDate.split('-').map(Number)
+        from = new Date(sy, sm - 1, sd)
+        to = new Date(ey, em - 1, ed + 1)
       } else {
-        url += `month=${reportMonth}&year=${reportYear}`
+        from = new Date(reportYear, reportMonth - 1, 1)
+        to = new Date(reportYear, reportMonth, 1)
       }
+      const url = `/api/reports/monthly?date_from=${encodeURIComponent(from.toISOString())}&date_to=${encodeURIComponent(to.toISOString())}`
 
       const response = await axios.get(url, {
         responseType: 'blob'
@@ -155,7 +166,7 @@ export default function Dashboard() {
 
   const { data: invoices } = useQuery({
     queryKey: ['invoices', dateRange.date_from, dateRange.date_to],
-    queryFn: () => invoicesApi.getAll(dateRange).then(res => res.data),
+    queryFn: () => invoicesApi.getAll({ ...dateRange, limit: 1000 }).then(res => res.data),
   })
 
   const stats = [
@@ -185,7 +196,7 @@ export default function Dashboard() {
     },
     {
       title: 'Total Revenue',
-      value: showRevenue ? formatCurrency(invoices?.reduce((sum, inv) => sum + inv.total_amount, 0) || 0) : '••••••',
+      value: showRevenue ? formatCurrency(invoices?.filter(inv => inv.invoice_type === 'invoice').reduce((sum, inv) => sum + inv.total_amount, 0) || 0) : '••••••',
       icon: TrendingUp,
       color: 'text-orange-600',
       bgColor: 'bg-gradient-to-br from-orange-50 to-orange-100',
@@ -204,7 +215,11 @@ export default function Dashboard() {
     }
   })
 
-  const recentQuotations = invoices?.filter(inv => inv.invoice_type === 'quotation').slice(0, 5) || []
+  const quotationIds = new Set(invoices?.filter(inv => inv.invoice_type === 'quotation').map(inv => inv.id))
+  // Invoices whose quotation was deleted are shown as top-level documents
+  const recentQuotations = invoices?.filter(inv =>
+    inv.invoice_type === 'quotation' || !(inv.source_quotation && quotationIds.has(inv.source_quotation.id))
+  ).slice(0, 5) || []
 
   return (
     <div className="space-y-8">
@@ -304,6 +319,22 @@ export default function Dashboard() {
             <p className="text-gray-500 text-center py-4 text-sm">No documents yet</p>
           ) : (
             recentQuotations.map((quotation) => {
+              if (quotation.invoice_type === 'invoice') {
+                return (
+                  <div key={quotation.id} className="flex items-center justify-between p-2 bg-purple-50 rounded border border-purple-200 text-sm">
+                    <div>
+                      <p className="font-bold text-gray-700">{quotation.invoice_number}</p>
+                      <p className="text-xs text-gray-600">{quotation.customer.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-gray-900">{formatCurrency(quotation.total_amount)}</p>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-200 text-purple-800">
+                        INVOICE
+                      </span>
+                    </div>
+                  </div>
+                )
+              }
               const converted = quotationInvoiceMap.get(quotation.id) || []
               return (
                 <div key={quotation.id} className="space-y-1">

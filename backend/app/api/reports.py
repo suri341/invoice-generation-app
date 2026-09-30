@@ -70,8 +70,11 @@ def download_monthly_report(
             if inv.source_quotation_id in quotation_map:
                 quotation_map[inv.source_quotation_id]['invoices'].append(inv)
 
-    # Also include standalone invoices
-    standalone_invoices = [inv for inv in invoices if inv.invoice_type == InvoiceType.INVOICE and inv.source_quotation_id is None]
+    # Invoices without a quotation in this range are listed on their own
+    standalone_invoices = [
+        inv for inv in invoices
+        if inv.invoice_type == InvoiceType.INVOICE and inv.source_quotation_id not in quotation_map
+    ]
 
     # Generate CSV
     output = io.StringIO()
@@ -144,7 +147,7 @@ def download_monthly_report(
             f"{invoice.cgst_amount:.2f}",
             f"{invoice.sgst_amount:.2f}",
             f"{invoice.igst_amount:.2f}",
-            ''
+            invoice.source_quotation.invoice_number if invoice.source_quotation else ''
         ])
 
     # Write summary
@@ -153,7 +156,7 @@ def download_monthly_report(
     writer.writerow(['Total Quotations', len(quotation_map)])
     total_invoices = sum(len(data['invoices']) for data in quotation_map.values()) + len(standalone_invoices)
     writer.writerow(['Total Invoices', total_invoices])
-    total_amount = sum(inv.total_amount for inv in invoices)
+    total_amount = sum(inv.total_amount for inv in invoices if inv.invoice_type == InvoiceType.INVOICE)
     writer.writerow(['Total Amount', f"{total_amount:.2f}"])
 
     # Prepare response

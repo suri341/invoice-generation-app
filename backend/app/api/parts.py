@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.models.part import Part
-from app.schemas.part import PartCreate, PartUpdate, PartResponse
+from app.schemas.part import PartCreate, PartUpdate, PartResponse, PartStockUpdate
+from app.utils.excel import xlsx_response
 
 router = APIRouter()
 
@@ -41,6 +42,28 @@ def get_parts(
 @router.get("/categories", response_model=List[str])
 def get_categories(db: Session = Depends(get_db)):
     return PART_CATEGORIES
+
+
+@router.get("/export")
+def export_parts(db: Session = Depends(get_db)):
+    parts = db.query(Part).order_by(Part.category, Part.name).all()
+    headers = ["ID", "Part Name", "Category", "Description", "HSN Code", "Unit", "Price", "Stock Quantity"]
+    rows = [
+        [p.id, p.name, p.category, p.description, p.hsn_code, p.unit, p.price, p.stock_quantity]
+        for p in parts
+    ]
+    return xlsx_response("Parts", headers, rows)
+
+
+@router.put("/{part_id}/stock", response_model=PartResponse)
+def update_part_stock(part_id: int, stock: PartStockUpdate, db: Session = Depends(get_db)):
+    part = db.query(Part).filter(Part.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Part not found")
+    part.stock_quantity = stock.stock_quantity
+    db.commit()
+    db.refresh(part)
+    return part
 
 
 @router.post("/", response_model=PartResponse, status_code=status.HTTP_201_CREATED)

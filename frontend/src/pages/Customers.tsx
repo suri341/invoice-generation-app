@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { customersApi, invoicesApi } from '@/lib/api'
 import { downloadBlob, formatCurrency } from '@/lib/utils'
-import { Plus, Search, Mail, Phone, MapPin, Edit, Trash2, FileText, MessageCircle, Download } from 'lucide-react'
+import { Plus, Search, Mail, Phone, MapPin, Edit, Trash2, FileText, MessageCircle, Download, FileSpreadsheet } from 'lucide-react'
 import CustomerModal from '@/components/CustomerModal'
 import type { Customer } from '@/types'
 
@@ -23,6 +23,14 @@ export default function Customers() {
     onSuccess: (response, params) => {
       downloadBlob(response.data, params.filename)
     },
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: () => customersApi.exportExcel(),
+    onSuccess: (response) => {
+      downloadBlob(response.data, `customers_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    },
+    onError: () => alert('Failed to download customers Excel report'),
   })
 
   const { data: customers, isLoading } = useQuery({
@@ -105,10 +113,16 @@ export default function Customers() {
           <h2 className="text-3xl font-bold text-gray-900">Customers</h2>
           <p className="text-gray-500 mt-1">Manage your customer database</p>
         </div>
-        <Button className="flex items-center space-x-2" onClick={handleAddNew}>
-          <Plus className="h-4 w-4" />
-          <span>Add Customer</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="flex items-center space-x-2" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>Download Excel</span>
+          </Button>
+          <Button className="flex items-center space-x-2" onClick={handleAddNew}>
+            <Plus className="h-4 w-4" />
+            <span>Add Customer</span>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -175,7 +189,7 @@ export default function Customers() {
                       </div>
                     )}
 
-                    {(customer.customer_type || customer.missionary_type) && (
+                    {(customer.customer_type || customer.missionary_type || customer.tph) && (
                       <div className="mt-4 pt-4 border-t">
                         {customer.customer_type && (
                           <div className="mb-2">
@@ -189,6 +203,12 @@ export default function Customers() {
                           <div>
                             <p className="text-xs text-gray-500">Missionary</p>
                             <p className="text-sm text-gray-700">{customer.missionary_type}</p>
+                          </div>
+                        )}
+                        {customer.tph && (
+                          <div className="mt-2">
+                            <p className="text-xs text-gray-500">TPH</p>
+                            <p className="text-sm text-gray-700">{customer.tph}</p>
                           </div>
                         )}
                       </div>
@@ -240,7 +260,10 @@ export default function Customers() {
           }
         })
 
-        const quotations = customerDocuments?.filter(d => d.invoice_type === 'quotation') || []
+        const quotationIds = new Set(customerDocuments?.filter(d => d.invoice_type === 'quotation').map(d => d.id))
+        const quotations = customerDocuments?.filter(d =>
+          d.invoice_type === 'quotation' || !(d.source_quotation && quotationIds.has(d.source_quotation.id))
+        ) || []
 
         return (
           <Card className="border border-blue-200">
@@ -260,6 +283,30 @@ export default function Customers() {
                 <p className="text-gray-500 text-center py-4 text-sm">No documents found</p>
               ) : (
                 quotations.map(quotation => {
+                  if (quotation.invoice_type === 'invoice') {
+                    return (
+                      <div key={quotation.id} className="flex justify-between items-center p-2 bg-purple-50 rounded border border-purple-200">
+                        <div className="flex-1">
+                          <p className="font-bold text-sm text-gray-700">{quotation.invoice_number}</p>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-200 text-purple-800">
+                            INVOICE
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-gray-900">{formatCurrency(quotation.total_amount)}</span>
+                          <button
+                            type="button"
+                            title="Download"
+                            onClick={() => downloadMutation.mutate({ id: quotation.id, filename: `${quotation.invoice_number}.pdf` })}
+                            disabled={downloadMutation.isPending}
+                            className="p-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Download className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  }
                   const converted = quotationInvoiceMap.get(quotation.id) || []
                   return (
                     <div key={quotation.id} className="space-y-1">

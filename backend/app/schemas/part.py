@@ -27,8 +27,13 @@ class PartUpdate(BaseModel):
     image_url: Optional[str] = Field(None, max_length=500)
 
 
+class PartStockUpdate(BaseModel):
+    stock_quantity: float
+
+
 class PartResponse(PartBase):
     id: int
+    stock_quantity: float = 0.0
     created_at: datetime
     updated_at: Optional[datetime] = None
 
