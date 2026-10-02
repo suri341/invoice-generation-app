@@ -295,6 +295,7 @@ export default function Invoices() {
                   {typeFilter === 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'invoice').map((invoice: Invoice) => renderInvoiceRow(invoice, false))}
                   {typeFilter !== 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'quotation' || (typeFilter === '' && isStandaloneInvoice(inv))).map((quotation: Invoice) => {
                     if (quotation.invoice_type === 'invoice') return renderInvoiceRow(quotation, false)
+                    const hasConvertedInvoice = (quotationInvoiceMap.get(quotation.id)?.length ?? 0) > 0
                     const convertedInvoices = typeFilter === 'quotation' ? [] : quotationInvoiceMap.get(quotation.id) || []
                     return (
                       <Fragment key={quotation.id}>
@@ -342,9 +343,13 @@ export default function Invoices() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                title="Convert to invoice"
-                                onClick={() => convertMutation.mutate(quotation.id)}
-                                disabled={convertMutation.isPending}
+                                title={hasConvertedInvoice ? 'Quotation already converted' : 'Convert to invoice'}
+                                onClick={() => {
+                                  if (window.confirm('Are you sure you want to convert this quotation to an invoice?')) {
+                                    convertMutation.mutate(quotation.id)
+                                  }
+                                }}
+                                disabled={convertMutation.isPending || hasConvertedInvoice}
                                 className="h-7 w-7 p-0"
                               >
                                 <ArrowRight className="h-3 w-3" />

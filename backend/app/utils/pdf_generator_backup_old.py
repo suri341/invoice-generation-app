@@ -250,14 +250,35 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     # Summary section matching invoice.pdf reference
     summary = []
 
-    # First line shows subtotal (no label, just amount)
-    summary.append([p("", normal), p(money(invoice.subtotal), normal)])
+    summary.append([
+        p("Subtotal" if is_quotation else "", normal),
+        p(money(invoice.subtotal), normal),
+    ])
 
     # Add freight/forwarding if there's any additional charges (can use notes or custom field)
     # For now, we'll skip this as it's not in the model
 
-    # Add taxes for Tax Invoice
-    if not is_quotation:
+    if is_quotation:
+        if invoice.discount_percentage > 0 or invoice.discount_amount > 0:
+            summary.append([
+                p(f"Less : Discount ({invoice.discount_percentage:g}%)", normal),
+                p(money(invoice.discount_amount), normal),
+            ])
+        if invoice.tax_type == "igst":
+            summary.append([
+                p(f"GST : IGST ({settings.IGST_RATE:g}%)", normal),
+                p(money(invoice.igst_amount), normal),
+            ])
+        else:
+            summary.append([
+                p(f"GST : CGST ({settings.CGST_RATE:g}%)", normal),
+                p(money(invoice.cgst_amount), normal),
+            ])
+            summary.append([
+                p(f"GST : SGST ({settings.SGST_RATE:g}%)", normal),
+                p(money(invoice.sgst_amount), normal),
+            ])
+    else:
         # Add CGST and SGST
         if invoice.cgst_amount > 0 and invoice.sgst_amount > 0:
             summary.append([p(f"Add : CGST ({settings.CGST_RATE:g}%)", normal), p(money(invoice.cgst_amount), normal)])
@@ -288,13 +309,13 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     ]))
     elements.extend([amount_words_table, Spacer(1, 0.12 * inch)])
 
+    bank_details = getattr(settings, "BANK_DETAILS", "")
+    if not bank_details:
+        bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
+
     # Bank Details and Terms & Conditions - ONLY FOR TAX INVOICES
     if not is_quotation:
         # Tax Invoice - Show Bank Details and Terms
-        bank_details = getattr(settings, "BANK_DETAILS", "")
-        if not bank_details:
-            bank_details = "HOLDER NAME : KANDIKONDA KRISHNA, UNION BANK OF INDIA - 050210100108017.\nIFSC CODE - UBIN0805025, BRANCH - SAMARLAKOTA"
-
         default_terms = """E. & O.E
 1. Goods once sold will not be taken back or exchanged.
 2. Interest 18& p.a. will be charged if the payment
@@ -328,7 +349,20 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         ]))
         elements.extend([Spacer(1, 0.15 * inch), signature_table])
     else:
-        # Quotation - NO Bank Details, NO Terms, simpler signature
+        bank_table = Table([
+            [p("Bank Details :", label)],
+            [p(bank_details, small)],
+        ], colWidths=[7.45 * inch], style=TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.extend([bank_table, Spacer(1, 0.12 * inch)])
+
+        # Quotation - no terms, simpler signature
         signature_table = Table([
             [p(f"For {settings.COMPANY_NAME.upper()}", ParagraphStyle("CompSig", parent=label, alignment=TA_RIGHT))],
             [p("", normal)],

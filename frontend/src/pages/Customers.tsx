@@ -153,90 +153,66 @@ export default function Customers() {
           ) : filteredCustomers && filteredCustomers.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No customers found</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredCustomers?.map((customer: Customer) => (
-                <Card key={customer.id} className="border-2 border-indigo-200 hover:shadow-xl hover:border-indigo-400 transition-all bg-gradient-to-br from-white to-indigo-50">
-                  <CardContent className="p-6">
-                    <h3 className="font-semibold text-lg text-gray-900">{customer.name}</h3>
+                <Card key={customer.id} className="border border-indigo-200 hover:border-indigo-400 transition-colors bg-white">
+                  <CardContent className="p-3">
+                    <h3 className="font-semibold text-sm leading-5 text-gray-900 break-words">{customer.name}</h3>
                     {customer.company_name && (
-                      <p className="text-sm text-gray-600 mt-1">{customer.company_name}</p>
+                      <p className="text-xs text-gray-600 break-words">{customer.company_name}</p>
                     )}
 
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
                       {customer.email && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Mail className="h-4 w-4 mr-2" />
+                        <div className="flex items-center min-w-0 break-all">
+                          <Mail className="h-3 w-3 mr-1 shrink-0" />
                           {customer.email}
                         </div>
                       )}
-                      <div className="flex items-center text-sm text-gray-600">
-                        <Phone className="h-4 w-4 mr-2" />
+                      <div className="flex items-center">
+                        <Phone className="h-3 w-3 mr-1 shrink-0" />
                         {customer.phone}
                       </div>
-                      {customer.city && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <MapPin className="h-4 w-4 mr-2" />
-                          {customer.city}, {customer.state}
+                      {(customer.city || customer.state) && (
+                        <div className="flex items-center">
+                          <MapPin className="h-3 w-3 mr-1 shrink-0" />
+                          {[customer.city, customer.state].filter(Boolean).join(', ')}
                         </div>
                       )}
+                      {customer.gstin && <span className="break-all">GSTIN: {customer.gstin}</span>}
+                      {customer.customer_type && (
+                        <span className="font-semibold text-blue-800">{customer.customer_type}</span>
+                      )}
+                      {customer.missionary_type && <span>Missionary: {customer.missionary_type}</span>}
+                      {customer.tph && <span>TPH: {customer.tph}</span>}
                     </div>
 
-                    {customer.gstin && (
-                      <div className="mt-4 pt-4 border-t">
-                        <p className="text-xs text-gray-500">GSTIN</p>
-                        <p className="text-sm font-mono text-gray-700">{customer.gstin}</p>
-                      </div>
-                    )}
-
-                    {(customer.customer_type || customer.missionary_type || customer.tph) && (
-                      <div className="mt-4 pt-4 border-t">
-                        {customer.customer_type && (
-                          <div className="mb-2">
-                            <p className="text-xs text-gray-500">Customer Type</p>
-                            <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {customer.customer_type}
-                            </span>
-                          </div>
-                        )}
-                        {customer.missionary_type && (
-                          <div>
-                            <p className="text-xs text-gray-500">Missionary</p>
-                            <p className="text-sm text-gray-700">{customer.missionary_type}</p>
-                          </div>
-                        )}
-                        {customer.tph && (
-                          <div className="mt-2">
-                            <p className="text-xs text-gray-500">TPH</p>
-                            <p className="text-sm text-gray-700">{customer.tph}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-4 flex space-x-2">
+                    <div className="mt-3 flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1"
+                        className="h-8 flex-1"
                         onClick={() => handleEdit(customer)}
                       >
-                        <Edit className="h-4 w-4 mr-1" />
+                        <Edit className="h-3 w-3 mr-1" />
                         Edit
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => setHistoryCustomerId(historyCustomerId === customer.id ? null : customer.id)}>
-                        <FileText className="h-4 w-4 mr-1" />
+                      <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => setHistoryCustomerId(historyCustomerId === customer.id ? null : customer.id)}>
+                        <FileText className="h-3 w-3 mr-1" />
                         Documents
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
+                        className="h-8 w-8 p-0 shrink-0"
+                        aria-label={`Delete ${customer.name}`}
                         onClick={() => {
                           if (window.confirm('Are you sure you want to delete this customer?')) {
                             deleteMutation.mutate(customer.id)
                           }
                         }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </CardContent>

@@ -128,16 +128,18 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     """Generate a tax invoice laid out point-to-point like invoice-reference.pdf."""
     pdf_dir = "generated_pdfs"
     os.makedirs(pdf_dir, exist_ok=True)
-    filepath = os.path.join(pdf_dir, f"{invoice.invoice_number}.pdf")
+    safe_doc_no = invoice.invoice_number.replace("/", "_")
+    filepath = os.path.join(pdf_dir, f"{safe_doc_no}.pdf")
 
     customer = invoice.customer
     company = settings.COMPANY_NAME.upper()
     doc_no = _doc_number(invoice.invoice_number)
+    is_quotation = invoice.invoice_type.value == "quotation"
     page_width, page_height = A4
     scale = page_width / REF_W
 
     c = pdf_canvas.Canvas(filepath, pagesize=A4)
-    c.setTitle(f"Invoice {doc_no}")
+    c.setTitle(f"{'Quotation' if is_quotation else 'Invoice'} {doc_no}")
     c.setAuthor(settings.COMPANY_NAME)
 
     def text(x, y, value, font=REG, size=BODY_SIZE, align="left"):
@@ -169,13 +171,14 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
     quotation_no = _doc_number(invoice.source_quotation.invoice_number) if invoice.source_quotation else ""
 
     tax_lines = []
-    if invoice.discount_amount:
+    tax_prefix = "GST - " if is_quotation else "Add : "
+    if invoice.discount_amount or is_quotation:
         tax_lines.append((f"Less : Discount  {invoice.discount_percentage:g}%", invoice.discount_amount))
     if invoice.tax_type == "igst":
-        tax_lines.append((f"Add : IGST  {settings.IGST_RATE:g}%", invoice.igst_amount))
+        tax_lines.append((f"{tax_prefix}IGST  {settings.IGST_RATE:g}%", invoice.igst_amount))
     else:
-        tax_lines.append((f"Add : CGST  {settings.CGST_RATE:g}%", invoice.cgst_amount))
-        tax_lines.append((f"Add : SGST  {settings.SGST_RATE:g}%", invoice.sgst_amount))
+        tax_lines.append((f"{tax_prefix}CGST  {settings.CGST_RATE:g}%", invoice.cgst_amount))
+        tax_lines.append((f"{tax_prefix}SGST  {settings.SGST_RATE:g}%", invoice.sgst_amount))
 
     pages = _paginate_items(invoice.items)
     for page_number, rows in enumerate(pages, 1):
@@ -199,7 +202,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         # ---- Company header ----
         if os.path.exists(LOGO_PATH):
             c.drawImage(ImageReader(LOGO_PATH), 220, REF_H - 376, width=150, height=114, mask="auto")
-        text(637.5, 269, "TAX INVOICE", BOLD, 21.0, "center")
+        text(637.5, 269, "QUOTATION" if is_quotation else "TAX INVOICE", BOLD, 21.0, "center")
         name_size = 36.2
         name_width = stringWidth(company, BOLD, name_size)
         horiz_scale = min(100.0, 448 / name_width * 100)
@@ -214,7 +217,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         text(637.5, 368, settings.COMPANY_ADDRESS, REG, HEAD_SIZE, "center")
         text(637.5, 394, settings.COMPANY_CITY, REG, HEAD_SIZE, "center")
         text(637.5, 424, f"GSTIN : {settings.GSTIN}", BOLD, HEAD_SIZE, "center")
-        text(1182, 263, "Original Copy", ITAL, HEAD_SIZE, "right")
+        text(1182, 263, "Quotation" if is_quotation else "Original Copy", ITAL, HEAD_SIZE, "right")
         if len(pages) > 1:
             text(1182, 293, f"Page {page_number} of {len(pages)}", ITAL, 18, "right")
 
@@ -231,7 +234,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         text(204, 660, doc_no, TIMES, 23.8)
 
         for label, value, label_y, value_y in (
-            ("Invoice No.", doc_no, 459, 459),
+            ("Quotation No." if is_quotation else "Invoice No.", doc_no, 459, 459),
             ("Dated", _date(invoice.invoice_date), 512, 504),
             ("Place of Supply", place_of_supply, 538, 538),
             ("Transport", "", 581, 581),
@@ -244,8 +247,8 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
             if value:
                 text(891, value_y, value, REG, _fit_size(value, REG, META_SIZE, 312))
 
-        text(81, 705, "Quotation No.", REG, 23.0)
         if quotation_no:
+            text(81, 705, "Quotation No.", REG, 23.0)
             text(81 + stringWidth("Quotation No. ", REG, 23.0), 705, quotation_no, REG, 23.0)
 
         # ---- Items table ----
@@ -276,15 +279,18 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
         text(80, 1265, "AMOUNT IN WORDS :", BOLD)
         text(805, 1265, "GRAND TOTAL", BOLD)
         if is_last_page:
+            if is_quotation:
+                text(620, 1120, "SUBTOTAL", BOLD)
             text(1141, 1120, f"{invoice.subtotal:.2f}", BOLD, align="center")
             if len(tax_lines) == 1:
                 label, value = tax_lines[0]
-                text(613, 1146, "Add :", ITAL)
-                text(620, 1173, label, ITAL)
+                if not is_quotation:
+                    text(613, 1146, "Add :", ITAL)
+                text(620, 1173, label, BOLD if is_quotation else ITAL)
                 text(1126.5, 1188, f"{value:.2f}", BOLD, align="center")
             else:
                 for offset, (label, value) in enumerate(tax_lines):
-                    text(620, 1146 + offset * 27, label, ITAL)
+                    text(620, 1146 + offset * 27, label, BOLD if is_quotation else ITAL)
                     text(1126.5, 1146 + offset * 27, f"{value:.2f}", BOLD, align="center")
             text(1128.5, 1265, _indian_grouping(int(round(invoice.total_amount))), BOLD, align="center")
             words = _amount_in_words(invoice.total_amount)

@@ -16,7 +16,8 @@ export default function CreateInvoice() {
   const [invoiceType] = useState<'quotation'>('quotation')
   const [customerId, setCustomerId] = useState<number | null>(null)
   const [taxType, setTaxType] = useState<string>('cgst_sgst')  // cgst_sgst or igst
-  const [discountPercentage, setDiscountPercentage] = useState(0)
+  const [discountPercentage, setDiscountPercentage] = useState('')
+  const discountRate = Number(discountPercentage) || 0
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<Omit<InvoiceItem, 'id' | 'amount'>[]>([{
     part_id: undefined,
@@ -47,7 +48,7 @@ export default function CreateInvoice() {
   useEffect(() => {
     if (existingInvoice) {
       setCustomerId(existingInvoice.customer_id)
-      setDiscountPercentage(existingInvoice.discount_percentage)
+      setDiscountPercentage(existingInvoice.discount_percentage ? String(existingInvoice.discount_percentage) : '')
       setNotes(existingInvoice.notes || '')
       setItems(existingInvoice.items.map(({ amount, id, ...item }) => item))
     }
@@ -105,7 +106,7 @@ export default function CreateInvoice() {
 
   const calculateTax = () => {
     const subtotal = calculateSubtotal()
-    const discountAmount = (subtotal * discountPercentage) / 100
+    const discountAmount = (subtotal * discountRate) / 100
     const subtotalAfterDiscount = subtotal - discountAmount
 
     if (taxType === 'igst') {
@@ -117,7 +118,7 @@ export default function CreateInvoice() {
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal()
-    const discountAmount = (subtotal * discountPercentage) / 100
+    const discountAmount = (subtotal * discountRate) / 100
     const subtotalAfterDiscount = subtotal - discountAmount
     const taxes = calculateTax()
     return subtotalAfterDiscount + taxes.cgst + taxes.sgst + taxes.igst
@@ -139,7 +140,7 @@ export default function CreateInvoice() {
       customer_id: customerId,
       invoice_type: invoiceType,
       tax_type: taxType,
-      discount_percentage: discountPercentage,
+      discount_percentage: discountRate,
       notes,
       items,
     }
@@ -330,7 +331,7 @@ export default function CreateInvoice() {
                   min="0"
                   max="100"
                   value={discountPercentage}
-                  onChange={(e) => setDiscountPercentage(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setDiscountPercentage(e.target.value)}
                 />
               </div>
 
@@ -361,10 +362,10 @@ export default function CreateInvoice() {
                 <span className="font-semibold">{formatCurrency(calculateSubtotal())}</span>
               </div>
 
-              {discountPercentage > 0 && (
+              {discountRate > 0 && (
                 <div className="flex justify-between text-red-600">
-                  <span>Discount ({discountPercentage}%):</span>
-                  <span>-{formatCurrency((calculateSubtotal() * discountPercentage) / 100)}</span>
+                  <span>Discount ({discountRate}%):</span>
+                  <span>-{formatCurrency((calculateSubtotal() * discountRate) / 100)}</span>
                 </div>
               )}
 

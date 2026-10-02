@@ -172,6 +172,23 @@ class InvoiceService:
         return invoice
 
     def convert_quotation_to_invoice(self, quotation: Invoice) -> Invoice:
+        quotation = (
+            self.db.query(Invoice)
+            .filter(Invoice.id == quotation.id)
+            .with_for_update()
+            .first()
+        )
+        if not quotation or quotation.invoice_type != InvoiceType.QUOTATION:
+            raise ValueError("Only quotations can be converted to invoices")
+
+        existing_invoice = (
+            self.db.query(Invoice.id)
+            .filter(Invoice.source_quotation_id == quotation.id)
+            .first()
+        )
+        if existing_invoice:
+            raise ValueError("This quotation has already been converted to an invoice")
+
         required = {}
         for item in quotation.items:
             if item.part_id:
