@@ -30,10 +30,6 @@ export default function Stock() {
     onError: () => alert('Failed to update stock'),
   })
 
-  if (isLoading) {
-    return <div className="text-center py-12">Loading stock...</div>
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -54,7 +50,9 @@ export default function Stock() {
           </div>
         </CardHeader>
         <CardContent>
-          {parts && parts.length === 0 ? (
+          {isLoading ? (
+            <p className="text-gray-500 text-center py-8">Loading stock...</p>
+          ) : parts && parts.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No parts found</p>
           ) : (
             <div className="overflow-x-auto">

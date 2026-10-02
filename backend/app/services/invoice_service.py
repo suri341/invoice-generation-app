@@ -11,6 +11,24 @@ class InvoiceService:
         self.db = db
 
     def generate_invoice_number(self, invoice_type: str) -> str:
+        if invoice_type == InvoiceType.INVOICE.value:
+            now = datetime.now()
+            fiscal_year_start = now.year if now.month >= 4 else now.year - 1
+            fiscal_year = f"{fiscal_year_start}-{(fiscal_year_start + 1) % 100:02d}"
+            last_number = 0
+
+            invoice_numbers = (
+                self.db.query(Invoice.invoice_number)
+                .filter(Invoice.invoice_type == InvoiceType.INVOICE)
+                .all()
+            )
+            for (number,) in invoice_numbers:
+                sequence, separator, number_fiscal_year = number.rpartition("/")
+                if separator and number_fiscal_year == fiscal_year and sequence.isdigit():
+                    last_number = max(last_number, int(sequence))
+
+            return f"{last_number + 1}/{fiscal_year}"
+
         prefix = "INV" if invoice_type == "invoice" else "QUO"
         year = datetime.now().year
         month = datetime.now().month

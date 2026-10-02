@@ -11,7 +11,7 @@ import type { Customer } from '@/types'
 
 export default function Customers() {
   const [search, setSearch] = useState('')
-  const [customerTypeFilter, setCustomerTypeFilter] = useState<string>('')
+  const [stateFilter, setStateFilter] = useState<string>('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | undefined>(undefined)
   const [historyCustomerId, setHistoryCustomerId] = useState<number | null>(null)
@@ -94,13 +94,9 @@ export default function Customers() {
     setIsModalOpen(true)
   }
 
-  if (isLoading) {
-    return <div className="text-center py-12">Loading customers...</div>
-  }
-
-  // Filter customers by type
+  // Filter customers by state
   const filteredCustomers = customers?.filter(customer => {
-    if (customerTypeFilter && customer.customer_type !== customerTypeFilter) {
+    if (stateFilter && customer.state !== stateFilter) {
       return false
     }
     return true
@@ -139,19 +135,22 @@ export default function Customers() {
             </div>
             <div className="w-48">
               <select
-                value={customerTypeFilter}
-                onChange={(e) => setCustomerTypeFilter(e.target.value)}
+                aria-label="Filter customers by state"
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Types</option>
-                <option value="Boiled">Boiled</option>
-                <option value="Raw Rice">Raw Rice</option>
+                <option value="">All States</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                <option value="Telangana">Telangana</option>
               </select>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {filteredCustomers && filteredCustomers.length === 0 ? (
+          {isLoading ? (
+            <p className="text-gray-500 text-center py-8">Loading customers...</p>
+          ) : filteredCustomers && filteredCustomers.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No customers found</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

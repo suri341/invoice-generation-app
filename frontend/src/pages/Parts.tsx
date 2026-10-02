@@ -78,10 +78,6 @@ export default function Parts() {
     setIsModalOpen(true)
   }
 
-  if (isLoading) {
-    return <div className="text-center py-12">Loading parts...</div>
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -128,7 +124,9 @@ export default function Parts() {
           </div>
         </CardHeader>
         <CardContent>
-          {parts && parts.length === 0 ? (
+          {isLoading ? (
+            <p className="text-gray-500 text-center py-8">Loading parts...</p>
+          ) : parts && parts.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No parts found</p>
           ) : (
             <div className="overflow-x-auto">
