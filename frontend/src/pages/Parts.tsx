@@ -7,6 +7,7 @@ import { partsApi } from '@/lib/api'
 import { Plus, Search, Edit, Trash2, FileSpreadsheet } from 'lucide-react'
 import { downloadBlob, formatCurrency } from '@/lib/utils'
 import PartModal from '@/components/PartModal'
+import PaginationControls from '@/components/ui/PaginationControls'
 import type { Part } from '@/types'
 
 const PART_CATEGORIES = ['Rubber rolls', 'Sieves', 'Stones', 'Bearings', 'Flanges', 'Feed screw', 'Shafts', 'Aspiration hose', 'Belts', 'Pulley', 'Pneumatic system', 'Electric item', 'Motor', 'Nut bolts']
@@ -14,14 +15,19 @@ const PART_CATEGORIES = ['Rubber rolls', 'Sieves', 'Stones', 'Bearings', 'Flange
 export default function Parts() {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedPart, setSelectedPart] = useState<Part | undefined>(undefined)
   const queryClient = useQueryClient()
 
   const { data: parts, isLoading } = useQuery({
     queryKey: ['parts', search, selectedCategory],
-    queryFn: () => partsApi.getAll({ search, category: selectedCategory || undefined }).then(res => res.data),
+    queryFn: () => partsApi.getAll({ search, category: selectedCategory || undefined, limit: 1000 }).then(res => res.data),
   })
+  const totalPages = Math.max(1, Math.ceil((parts?.length || 0) / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedParts = parts?.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const exportMutation = useMutation({
     mutationFn: () => partsApi.exportExcel(),
@@ -105,13 +111,13 @@ export default function Parts() {
               <Input
                 placeholder="Search parts..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                 className="pl-10"
               />
             </div>
             <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={(e) => { setSelectedCategory(e.target.value); setPage(1) }}
               className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
@@ -142,7 +148,7 @@ export default function Parts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {parts?.map((part: Part) => (
+                  {paginatedParts?.map((part: Part) => (
                     <tr key={part.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4">
                         <div>
@@ -190,6 +196,15 @@ export default function Parts() {
                 </tbody>
               </table>
             </div>
+          )}
+          {parts && parts.length > 0 && (
+            <PaginationControls
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={parts.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
           )}
         </CardContent>
       </Card>

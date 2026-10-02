@@ -5,17 +5,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { partsApi } from '@/lib/api'
 import { Search, Save } from 'lucide-react'
+import PaginationControls from '@/components/ui/PaginationControls'
 import type { Part } from '@/types'
 
 export default function Stock() {
   const [search, setSearch] = useState('')
   const [edits, setEdits] = useState<Record<number, string>>({})
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const queryClient = useQueryClient()
 
   const { data: parts, isLoading } = useQuery({
     queryKey: ['parts', 'stock', search],
     queryFn: () => partsApi.getAll({ search, limit: 1000 }).then(res => res.data),
   })
+  const totalPages = Math.max(1, Math.ceil((parts?.length || 0) / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedParts = parts?.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const saveMutation = useMutation({
     mutationFn: ({ id, quantity }: { id: number; quantity: number }) => partsApi.updateStock(id, quantity),
@@ -44,7 +50,7 @@ export default function Stock() {
             <Input
               placeholder="Search parts..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
               className="pl-10"
             />
           </div>
@@ -67,7 +73,7 @@ export default function Stock() {
                   </tr>
                 </thead>
                 <tbody>
-                  {parts?.map((part: Part) => {
+                  {paginatedParts?.map((part: Part) => {
                     const edited = edits[part.id]
                     return (
                       <tr key={part.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -105,6 +111,15 @@ export default function Stock() {
                 </tbody>
               </table>
             </div>
+          )}
+          {parts && parts.length > 0 && (
+            <PaginationControls
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={parts.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
           )}
         </CardContent>
       </Card>

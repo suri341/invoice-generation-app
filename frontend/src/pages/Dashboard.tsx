@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import PaginationControls from '@/components/ui/PaginationControls'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
 import { FileText, Users, Package, TrendingUp, Eye, EyeOff, RefreshCw, ChevronDown, Download } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -22,6 +23,8 @@ export default function Dashboard() {
   const [startDate, setStartDate] = useState(veryOldDate)
   const [endDate, setEndDate] = useState(farFutureDate)
   const [showRevenue, setShowRevenue] = useState(false)
+  const [recentPage, setRecentPage] = useState(1)
+  const [recentPageSize, setRecentPageSize] = useState(10)
   const [selectedRange, setSelectedRange] = useState('none')
   const [showCustom, setShowCustom] = useState(false)
   // End minute is inclusive
@@ -62,6 +65,7 @@ export default function Dashboard() {
       setTempEndDate(endStr)
       setStartDate(startStr)
       setEndDate(endStr)
+      setRecentPage(1)
       setSelectedRange(range)
       setShowCustom(false)
       return
@@ -96,6 +100,7 @@ export default function Dashboard() {
     setTempEndDate(endStr)
     setStartDate(startStr)
     setEndDate(endStr)
+    setRecentPage(1)
     setSelectedRange(range)
     setShowCustom(false)
   }
@@ -103,6 +108,7 @@ export default function Dashboard() {
   const applyFilters = () => {
     setStartDate(tempStartDate)
     setEndDate(tempEndDate)
+    setRecentPage(1)
   }
 
   const resetFilters = () => {
@@ -113,6 +119,7 @@ export default function Dashboard() {
     setTempEndDate(farFutureDate)
     setStartDate(veryOldDate)
     setEndDate(farFutureDate)
+    setRecentPage(1)
     setSelectedRange('none')
     setShowCustom(false)
   }
@@ -219,7 +226,13 @@ export default function Dashboard() {
   // Invoices whose quotation was deleted are shown as top-level documents
   const recentQuotations = invoices?.filter(inv =>
     inv.invoice_type === 'quotation' || !(inv.source_quotation && quotationIds.has(inv.source_quotation.id))
-  ).slice(0, 5) || []
+  ) || []
+  const recentPageCount = Math.max(1, Math.ceil(recentQuotations.length / recentPageSize))
+  const currentRecentPage = Math.min(recentPage, recentPageCount)
+  const paginatedRecentQuotations = recentQuotations.slice(
+    (currentRecentPage - 1) * recentPageSize,
+    currentRecentPage * recentPageSize
+  )
 
   return (
     <div className="space-y-8">
@@ -318,7 +331,7 @@ export default function Dashboard() {
           {recentQuotations.length === 0 ? (
             <p className="text-gray-500 text-center py-4 text-sm">No documents yet</p>
           ) : (
-            recentQuotations.map((quotation) => {
+            paginatedRecentQuotations.map((quotation) => {
               if (quotation.invoice_type === 'invoice') {
                 return (
                   <div key={quotation.id} className="flex items-center justify-between p-2 bg-purple-50 rounded border border-purple-200 text-sm">
@@ -367,6 +380,15 @@ export default function Dashboard() {
                 </div>
               )
             })
+          )}
+          {recentQuotations.length > 0 && (
+            <PaginationControls
+              page={currentRecentPage}
+              pageSize={recentPageSize}
+              totalItems={recentQuotations.length}
+              onPageChange={setRecentPage}
+              onPageSizeChange={(size) => { setRecentPageSize(size); setRecentPage(1) }}
+            />
           )}
         </CardContent>
       </Card>

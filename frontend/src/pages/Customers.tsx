@@ -7,11 +7,16 @@ import { customersApi, invoicesApi } from '@/lib/api'
 import { downloadBlob, formatCurrency } from '@/lib/utils'
 import { Plus, Search, Mail, Phone, MapPin, Edit, Trash2, FileText, MessageCircle, Download, FileSpreadsheet } from 'lucide-react'
 import CustomerModal from '@/components/CustomerModal'
+import PaginationControls from '@/components/ui/PaginationControls'
 import type { Customer } from '@/types'
 
 export default function Customers() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<string>('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyPageSize, setHistoryPageSize] = useState(10)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | undefined>(undefined)
   const [historyCustomerId, setHistoryCustomerId] = useState<number | null>(null)
@@ -35,12 +40,12 @@ export default function Customers() {
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['customers', search],
-    queryFn: () => customersApi.getAll({ search }).then(res => res.data),
+    queryFn: () => customersApi.getAll({ search, limit: 1000 }).then(res => res.data),
   })
 
   const { data: customerDocuments } = useQuery({
     queryKey: ['invoices', 'customer', historyCustomerId],
-    queryFn: () => invoicesApi.getAll({ customer_id: historyCustomerId ?? undefined }).then(res => res.data),
+    queryFn: () => invoicesApi.getAll({ customer_id: historyCustomerId ?? undefined, limit: 1000 }).then(res => res.data),
     enabled: historyCustomerId !== null,
   })
 
@@ -101,6 +106,9 @@ export default function Customers() {
     }
     return true
   })
+  const totalPages = Math.max(1, Math.ceil((filteredCustomers?.length || 0) / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedCustomers = filteredCustomers?.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
     <div className="space-y-6">
@@ -129,7 +137,7 @@ export default function Customers() {
               <Input
                 placeholder="Search customers by name, company, or phone..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                 className="pl-10"
               />
             </div>
@@ -137,7 +145,7 @@ export default function Customers() {
               <select
                 aria-label="Filter customers by state"
                 value={stateFilter}
-                onChange={(e) => setStateFilter(e.target.value)}
+                onChange={(e) => { setStateFilter(e.target.value); setPage(1) }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All States</option>
@@ -154,7 +162,7 @@ export default function Customers() {
             <p className="text-gray-500 text-center py-8">No customers found</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {filteredCustomers?.map((customer: Customer) => (
+              {paginatedCustomers?.map((customer: Customer) => (
                 <Card key={customer.id} className="border border-indigo-200 hover:border-indigo-400 transition-colors bg-white">
                   <CardContent className="p-3">
                     <h3 className="font-semibold text-sm leading-5 text-gray-900 break-words">{customer.name}</h3>
@@ -197,7 +205,10 @@ export default function Customers() {
                         <Edit className="h-3 w-3 mr-1" />
                         Edit
                       </Button>
-                      <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => setHistoryCustomerId(historyCustomerId === customer.id ? null : customer.id)}>
+                      <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => {
+                        setHistoryPage(1)
+                        setHistoryCustomerId(historyCustomerId === customer.id ? null : customer.id)
+                      }}>
                         <FileText className="h-3 w-3 mr-1" />
                         Documents
                       </Button>
@@ -220,6 +231,15 @@ export default function Customers() {
               ))}
             </div>
           )}
+          {filteredCustomers && filteredCustomers.length > 0 && (
+            <PaginationControls
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={filteredCustomers.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -239,6 +259,12 @@ export default function Customers() {
         const quotations = customerDocuments?.filter(d =>
           d.invoice_type === 'quotation' || !(d.source_quotation && quotationIds.has(d.source_quotation.id))
         ) || []
+        const historyPageCount = Math.max(1, Math.ceil(quotations.length / historyPageSize))
+        const currentHistoryPage = Math.min(historyPage, historyPageCount)
+        const paginatedDocuments = quotations.slice(
+          (currentHistoryPage - 1) * historyPageSize,
+          currentHistoryPage * historyPageSize
+        )
 
         return (
           <Card className="border border-blue-200">
@@ -257,7 +283,7 @@ export default function Customers() {
               {quotations.length === 0 ? (
                 <p className="text-gray-500 text-center py-4 text-sm">No documents found</p>
               ) : (
-                quotations.map(quotation => {
+                paginatedDocuments.map(quotation => {
                   if (quotation.invoice_type === 'invoice') {
                     return (
                       <div key={quotation.id} className="flex justify-between items-center p-2 bg-purple-50 rounded border border-purple-200">
@@ -332,6 +358,15 @@ export default function Customers() {
                     </div>
                   )
                 })
+              )}
+              {quotations.length > 0 && (
+                <PaginationControls
+                  page={currentHistoryPage}
+                  pageSize={historyPageSize}
+                  totalItems={quotations.length}
+                  onPageChange={setHistoryPage}
+                  onPageSizeChange={(size) => { setHistoryPageSize(size); setHistoryPage(1) }}
+                />
               )}
             </CardContent>
           </Card>

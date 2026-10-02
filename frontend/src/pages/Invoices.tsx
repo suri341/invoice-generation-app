@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { invoicesApi } from '@/lib/api'
 import { Search, Download, Eye, Trash2, Pencil, ArrowRight, RefreshCw } from 'lucide-react'
 import { formatCurrency, formatDate, downloadBlob } from '@/lib/utils'
+import PaginationControls from '@/components/ui/PaginationControls'
 import type { Invoice } from '@/types'
 
 export default function Invoices() {
@@ -24,13 +25,15 @@ export default function Invoices() {
   const [tempAmountMin, setTempAmountMin] = useState('')
   const [amountMax, setAmountMax] = useState('')
   const [tempAmountMax, setTempAmountMax] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices'],
-    queryFn: () => invoicesApi.getAll().then(res => res.data),
+    queryFn: () => invoicesApi.getAll({ limit: 1000 }).then(res => res.data),
   })
 
   const filteredInvoices = invoices?.filter((invoice) => {
@@ -74,6 +77,7 @@ export default function Invoices() {
   })
 
   const applyFilters = () => {
+    setPage(1)
     setSearch(tempSearch)
     setCustomerFilter(tempCustomerFilter)
     setTypeFilter(tempTypeFilter)
@@ -84,6 +88,7 @@ export default function Invoices() {
   }
 
   const resetFilters = () => {
+    setPage(1)
     setTempSearch('')
     setTempCustomerFilter('')
     setTempTypeFilter('')
@@ -124,6 +129,12 @@ export default function Invoices() {
   // Invoices whose quotation was deleted have no parent row to sit under
   const isStandaloneInvoice = (inv: Invoice) =>
     inv.invoice_type === 'invoice' && !(inv.source_quotation && quotationIds.has(inv.source_quotation.id))
+  const documentRows = typeFilter === 'invoice'
+    ? filteredInvoices.filter(inv => inv.invoice_type === 'invoice')
+    : filteredInvoices.filter(inv => inv.invoice_type === 'quotation' || (typeFilter === '' && isStandaloneInvoice(inv)))
+  const totalPages = Math.max(1, Math.ceil(documentRows.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedDocuments = documentRows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const renderInvoiceRow = (invoice: Invoice, nested: boolean) => (
     <tr key={invoice.id} id={`invoice-${invoice.id}`} className="border-b border-gray-100 hover:bg-purple-50 bg-purple-50/30">
@@ -292,8 +303,11 @@ export default function Invoices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {typeFilter === 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'invoice').map((invoice: Invoice) => renderInvoiceRow(invoice, false))}
-                  {typeFilter !== 'invoice' && filteredInvoices.filter(inv => inv.invoice_type === 'quotation' || (typeFilter === '' && isStandaloneInvoice(inv))).map((quotation: Invoice) => {
+                  {documentRows.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-gray-500">No documents match these filters</td></tr>
+                  )}
+                  {typeFilter === 'invoice' && paginatedDocuments.map((invoice: Invoice) => renderInvoiceRow(invoice, false))}
+                  {typeFilter !== 'invoice' && paginatedDocuments.map((quotation: Invoice) => {
                     if (quotation.invoice_type === 'invoice') return renderInvoiceRow(quotation, false)
                     const hasConvertedInvoice = (quotationInvoiceMap.get(quotation.id)?.length ?? 0) > 0
                     const convertedInvoices = typeFilter === 'quotation' ? [] : quotationInvoiceMap.get(quotation.id) || []
@@ -377,6 +391,17 @@ export default function Invoices() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+          {documentRows.length > 0 && (
+            <div className="px-4 pb-4">
+              <PaginationControls
+                page={currentPage}
+                pageSize={pageSize}
+                totalItems={documentRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+              />
             </div>
           )}
         </CardContent>
