@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { customersApi, partsApi, invoicesApi } from '@/lib/api'
 import { Plus, Trash2, Save } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import type { InvoiceItem, CreateInvoiceData } from '@/types'
+import type { InvoiceItem, CreateInvoiceData, TaxType } from '@/types'
 
 export default function CreateInvoice() {
   const navigate = useNavigate()
@@ -15,7 +15,7 @@ export default function CreateInvoice() {
   const editingId = invoiceId ? Number(invoiceId) : null
   const [invoiceType] = useState<'quotation'>('quotation')
   const [customerId, setCustomerId] = useState<number | null>(null)
-  const [taxType, setTaxType] = useState<string>('cgst_sgst')  // cgst_sgst or igst
+  const [taxType, setTaxType] = useState<TaxType>('cgst_sgst')
   const [discountPercentage, setDiscountPercentage] = useState('')
   const discountRate = Number(discountPercentage) || 0
   const [notes, setNotes] = useState('')
@@ -48,6 +48,7 @@ export default function CreateInvoice() {
   useEffect(() => {
     if (existingInvoice) {
       setCustomerId(existingInvoice.customer_id)
+      setTaxType(existingInvoice.tax_type)
       setDiscountPercentage(existingInvoice.discount_percentage ? String(existingInvoice.discount_percentage) : '')
       setNotes(existingInvoice.notes || '')
       setItems(existingInvoice.items.map(({ amount, id, ...item }) => item))
@@ -108,6 +109,10 @@ export default function CreateInvoice() {
     const subtotal = calculateSubtotal()
     const discountAmount = (subtotal * discountRate) / 100
     const subtotalAfterDiscount = subtotal - discountAmount
+
+    if (taxType === 'none') {
+      return { cgst: 0, sgst: 0, igst: 0 }
+    }
 
     if (taxType === 'igst') {
       return { cgst: 0, sgst: 0, igst: (subtotalAfterDiscount * 18) / 100 }
@@ -186,11 +191,12 @@ export default function CreateInvoice() {
                   </label>
                   <select
                     value={taxType}
-                    onChange={(e) => setTaxType(e.target.value)}
+                    onChange={(e) => setTaxType(e.target.value as TaxType)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="cgst_sgst">CGST + SGST (9% + 9% = 18%)</option>
                     <option value="igst">IGST (18%)</option>
+                    <option value="none">None (No GST)</option>
                   </select>
                 </div>
               </div>
@@ -380,12 +386,12 @@ export default function CreateInvoice() {
                     <span>{formatCurrency(calculateTax().sgst)}</span>
                   </div>
                 </>
-              ) : (
+              ) : taxType === 'igst' ? (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">IGST (18%):</span>
                   <span>{formatCurrency(calculateTax().igst)}</span>
                 </div>
-              )}
+              ) : null}
 
               <div className="pt-3 border-t border-gray-200">
                 <div className="flex justify-between">

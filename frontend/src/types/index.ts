@@ -44,13 +44,14 @@ export interface InvoiceItem {
 
 export type InvoiceType = 'invoice' | 'quotation'
 export type InvoiceStatus = 'completed'
+export type TaxType = 'cgst_sgst' | 'igst' | 'none'
 
 export interface Invoice {
   id: number
   invoice_number: string
   invoice_type: InvoiceType
   status: InvoiceStatus
-  tax_type: string  // cgst_sgst or igst
+  tax_type: TaxType
   customer_id: number
   customer: {
     id: number
@@ -81,7 +82,7 @@ export interface Invoice {
 export interface CreateInvoiceData {
   customer_id: number
   invoice_type: InvoiceType
-  tax_type: string  // cgst_sgst or igst
+  tax_type: TaxType
   invoice_date?: string
   due_date?: string
   discount_percentage?: number

@@ -269,7 +269,7 @@ def generate_invoice_pdf(invoice: Invoice) -> str:
                 p(f"GST : IGST ({settings.IGST_RATE:g}%)", normal),
                 p(money(invoice.igst_amount), normal),
             ])
-        else:
+        elif invoice.tax_type == "cgst_sgst":
             summary.append([
                 p(f"GST : CGST ({settings.CGST_RATE:g}%)", normal),
                 p(money(invoice.cgst_amount), normal),

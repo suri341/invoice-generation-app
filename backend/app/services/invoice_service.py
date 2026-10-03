@@ -58,7 +58,11 @@ class InvoiceService:
         subtotal_after_discount = subtotal - discount_amount
 
         # Calculate taxes based on tax_type
-        if tax_type == "igst":
+        if tax_type == "none":
+            cgst_amount = 0.0
+            sgst_amount = 0.0
+            igst_amount = 0.0
+        elif tax_type == "igst":
             # IGST only (18%)
             cgst_amount = 0.0
             sgst_amount = 0.0
@@ -165,6 +169,14 @@ class InvoiceService:
             invoice.sgst_amount = amounts["sgst_amount"]
             invoice.igst_amount = amounts["igst_amount"]
             invoice.total_amount = amounts["total_amount"]
+        elif invoice_update.tax_type is not None or invoice_update.discount_percentage is not None:
+            amounts = self.calculate_amounts(
+                invoice.items,
+                invoice.discount_percentage,
+                invoice.tax_type
+            )
+            for field, value in amounts.items():
+                setattr(invoice, field, value)
 
         self.db.commit()
         self.db.refresh(invoice)

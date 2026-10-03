@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 from app.models.invoice import InvoiceType, InvoiceStatus
 
@@ -33,7 +33,7 @@ class InvoiceItemResponse(BaseModel):
 class InvoiceCreate(BaseModel):
     customer_id: int
     invoice_type: InvoiceType = InvoiceType.QUOTATION
-    tax_type: str = Field(default="cgst_sgst", max_length=20)  # cgst_sgst or igst
+    tax_type: Literal["cgst_sgst", "igst", "none"] = "cgst_sgst"
     invoice_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     discount_percentage: float = Field(default=0.0, ge=0, le=100)
@@ -44,6 +44,7 @@ class InvoiceCreate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     customer_id: Optional[int] = None
+    tax_type: Optional[Literal["cgst_sgst", "igst", "none"]] = None
     due_date: Optional[datetime] = None
     discount_percentage: Optional[float] = Field(None, ge=0, le=100)
     notes: Optional[str] = None
